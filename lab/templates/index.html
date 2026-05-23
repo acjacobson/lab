@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Lab - Deployment Test Site{% endblock %}
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">Deployment lab</p>
+  <h1>Lab is a small web app for testing software delivery.</h1>
+  <p>
+    This project starts as a mostly static site, but it runs as a web application with health
+    and version endpoints so it can evolve into a dynamic service later.
+  </p>
+  <div class="actions">
+    <a class="button" href="/blog">Read the sample post</a>
+    <a class="button secondary" href="/version">View version JSON</a>
+  </div>
+</section>
+<section class="card-grid">
+  <article>
+    <h2>Portable</h2>
+    <p>Builds as a container and can be hosted by any Docker-compatible platform.</p>
+  </article>
+  <article>
+    <h2>Observable</h2>
+    <p>Includes <code>/healthz</code> and <code>/version</code> endpoints for smoke checks.</p>
+  </article>
+  <article>
+    <h2>Small</h2>
+    <p>Intentionally minimal so deployment mechanics stay easy to inspect.</p>
+  </article>
+</section>
+{% endblock %}
