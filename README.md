@@ -36,16 +36,24 @@ Copy `.env.example` if you need local environment overrides. Do not commit real 
 
 ## Deployment
 
-This repository builds a portable web application container. It intentionally does not assume a specific production host.
+This repository builds a portable web application container. The app can be deployed anywhere that can build and run the Docker image.
 
-For a Docker Compose example, see `deploy/compose.example.yml`. Host-level routing, shared reverse proxies, VM users, firewall rules, and production paths should live in the infrastructure repository for the environment that runs the app.
+For a local Docker Compose example, see `deploy/compose.example.yml`.
 
-On pushes to `main`, the `Deploy` workflow runs after CI passes and triggers the external host repository deployment workflow. This keeps host-specific deployment logic out of this application repository while still allowing application commits to initiate deployment.
+For the current production-style VM workflow, this repository deploys itself after CI passes on pushes to `main`. The VM must already be provisioned with Docker, a `deploy` user, the external `web` Docker network, and a Traefik proxy. Host provisioning is intentionally handled outside this application repository.
 
-To enable automatic deployment, add this repository secret:
+Required repository secrets for automatic deployment:
 
 ```text
-APPHOST_DISPATCH_TOKEN
+DEPLOY_HOST
+DEPLOY_USER
+DEPLOY_SSH_KEY
+DEPLOY_APP_DIR
+LAB_HOSTNAME
 ```
 
-The token must be able to run workflows in the host repository. If the secret is not set, the workflow logs a skip message and exits successfully.
+Optional external smoke-test secret:
+
+```text
+DEPLOY_URL
+```
