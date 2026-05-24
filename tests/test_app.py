@@ -16,6 +16,7 @@ def test_homepage():
     assert response.status_code == 200
     assert "Lab is a small web app" in response.text
     assert '<main class="content-shell">' in response.text
+    assert 'href="/static/styles.css"' in response.text
 
 
 def test_static_styles_cover_content_sections():
