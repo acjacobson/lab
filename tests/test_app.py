@@ -15,6 +15,15 @@ def test_homepage():
     response = client.get("/")
     assert response.status_code == 200
     assert "Lab is a small web app" in response.text
+    assert '<main class="content-shell">' in response.text
+
+
+def test_static_styles_cover_content_sections():
+    response = client.get("/static/styles.css")
+    assert response.status_code == 200
+    assert ".content-shell" in response.text
+    assert ".hero" in response.text
+    assert ".card-grid article" in response.text
 
 
 def test_blog():
