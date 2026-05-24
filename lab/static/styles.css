@@ -28,11 +28,14 @@ body {
 .site-header {
   position: sticky;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 10;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
+  width: 100%;
   padding: 1rem clamp(1rem, 4vw, 4rem);
   background: rgba(18, 24, 38, 0.94);
   color: #fff;
@@ -207,12 +210,26 @@ code {
 
 @media (max-width: 620px) {
   .site-header {
-    align-items: flex-start;
-    flex-direction: column;
+    gap: 0.65rem;
+    padding: 0.8rem 1rem;
+  }
+
+  .brand {
+    flex: 0 0 auto;
   }
 
   nav {
-    justify-content: flex-start;
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  nav a {
+    flex: 0 0 auto;
+    padding-inline: 0.65rem;
   }
 
   .hero {

@@ -27,6 +27,16 @@ def test_static_styles_cover_content_sections():
     assert ".card-grid article" in response.text
 
 
+def test_mobile_header_stays_single_row_when_sticky():
+    response = client.get("/static/styles.css")
+    assert response.status_code == 200
+    assert ".site-header" in response.text
+    assert "left: 0;" in response.text
+    assert "right: 0;" in response.text
+    assert "overflow-x: auto;" in response.text
+    assert "flex-direction: column;" not in response.text
+
+
 def test_blog():
     response = client.get("/blog")
     assert response.status_code == 200
