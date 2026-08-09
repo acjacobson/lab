@@ -1,0 +1,426 @@
+:root {
+  color-scheme: dark;
+  --night: #06100f;
+  --deep-water: #0a1b19;
+  --panel: #0e211e;
+  --panel-soft: #132925;
+  --line: #29403b;
+  --mist: #c5d1c9;
+  --muted: #82948c;
+  --lamp: #efbd67;
+  --lamp-bright: #ffd990;
+  --storm: #a05d52;
+  --shadow: 0 32px 80px rgba(0, 0, 0, 0.42);
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.lab-back {
+  position: fixed;
+  top: 18px;
+  left: 20px;
+  z-index: 10;
+  color: #d7e2dc;
+  font: 700 0.75rem/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.lab-back:hover,
+.lab-back:focus-visible {
+  color: #ffffff;
+}
+
+html {
+  min-height: 100%;
+  background: var(--night);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: var(--mist);
+  background:
+    radial-gradient(circle at 78% 8%, rgba(239, 189, 103, 0.09), transparent 18rem),
+    linear-gradient(rgba(6, 16, 15, 0.78), rgba(6, 16, 15, 0.96)),
+    repeating-linear-gradient(108deg, transparent 0 18px, rgba(193, 211, 205, 0.025) 19px 20px),
+    var(--night);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.game-shell {
+  width: min(1040px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: clamp(28px, 6vw, 72px) 0;
+}
+
+.game-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.eyebrow {
+  margin: 0 0 7px;
+  color: var(--lamp);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  color: #f4eee1;
+  font-size: clamp(1.65rem, 4.5vw, 3rem);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+.restart {
+  min-height: 44px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 16px;
+  background: transparent;
+  color: var(--muted);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.restart:hover,
+.restart:focus-visible {
+  border-color: var(--lamp);
+  color: var(--lamp-bright);
+  outline: none;
+}
+
+.game-window {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgba(10, 27, 25, 0.94);
+  box-shadow: var(--shadow);
+}
+
+.status-strip {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.35fr) minmax(90px, 0.65fr) minmax(110px, 0.75fr) minmax(180px, 1.4fr);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.status-item {
+  min-width: 0;
+  padding: 14px 18px;
+  border-right: 1px solid var(--line);
+}
+
+.status-item:last-child {
+  border-right: 0;
+}
+
+.status-item span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.status-item strong {
+  display: block;
+  overflow: hidden;
+  color: #e8e3d8;
+  font-size: 0.84rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.storm-track {
+  height: 3px;
+  background: #0b1514;
+}
+
+.storm-track span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--storm);
+  transition: width 320ms ease;
+}
+
+.transcript {
+  height: min(58vh, 590px);
+  min-height: 410px;
+  overflow-y: auto;
+  padding: clamp(24px, 5vw, 52px);
+  scrollbar-color: var(--line) transparent;
+}
+
+.entry {
+  max-width: 760px;
+  margin: 0 0 25px;
+  animation: reveal 180ms ease-out both;
+}
+
+.entry p {
+  margin: 0 0 10px;
+  font-size: clamp(1rem, 2vw, 1.12rem);
+  line-height: 1.75;
+  text-wrap: pretty;
+}
+
+.entry strong {
+  color: var(--lamp-bright);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.76em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.command {
+  margin-top: 32px;
+  margin-bottom: 12px;
+}
+
+.command p {
+  color: var(--lamp);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.84rem;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.title-entry {
+  margin-bottom: 30px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--line);
+}
+
+.title-entry p {
+  color: var(--muted);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.17em;
+}
+
+.aside-entry p {
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-style: italic;
+}
+
+.ending {
+  border: 1px solid rgba(239, 189, 103, 0.32);
+  padding: 20px 22px;
+  background: rgba(239, 189, 103, 0.05);
+}
+
+.controls {
+  border-top: 1px solid var(--line);
+  padding: 18px clamp(18px, 4vw, 32px) 16px;
+  background: var(--panel);
+}
+
+.suggestions {
+  display: flex;
+  min-height: 29px;
+  gap: 7px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.suggestions::-webkit-scrollbar {
+  display: none;
+}
+
+.suggestion {
+  min-height: 29px;
+  flex: 0 0 auto;
+  border: 1px solid #304942;
+  border-radius: 2px;
+  padding: 4px 9px;
+  background: transparent;
+  color: #91a69c;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+}
+
+.suggestion:hover,
+.suggestion:focus-visible {
+  border-color: var(--lamp);
+  color: var(--lamp-bright);
+  outline: none;
+}
+
+.command-form {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  min-height: 56px;
+  border: 1px solid #3a514b;
+  border-radius: 3px;
+  background: #081614;
+}
+
+.command-form:focus-within {
+  border-color: var(--lamp);
+  box-shadow: 0 0 0 2px rgba(239, 189, 103, 0.1);
+}
+
+.prompt {
+  padding-left: 17px;
+  color: var(--lamp);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-weight: 700;
+}
+
+.command-form input {
+  min-width: 0;
+  height: 54px;
+  border: 0;
+  outline: 0;
+  padding: 0 13px;
+  background: transparent;
+  color: #f4eee1;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.92rem;
+}
+
+.command-form input::placeholder {
+  color: #586b64;
+}
+
+.command-form button {
+  min-height: 48px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: 2px;
+  padding: 0 18px;
+  background: var(--lamp);
+  color: #15201d;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.command-form button:hover,
+.command-form button:focus-visible {
+  background: var(--lamp-bright);
+  outline: none;
+}
+
+.command-help {
+  margin: 9px 0 0;
+  color: #64766f;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.64rem;
+  line-height: 1.5;
+}
+
+@keyframes reveal {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 700px) {
+  .game-shell {
+    width: min(100% - 20px, 1040px);
+    padding: 20px 0;
+  }
+
+  .game-header {
+    align-items: center;
+  }
+
+  .status-strip {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .status-item:nth-child(2) {
+    border-right: 0;
+  }
+
+  .status-item:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .transcript {
+    height: 55vh;
+    min-height: 340px;
+    padding: 25px 20px;
+  }
+
+  .controls {
+    padding-inline: 12px;
+  }
+
+  .command-form {
+    min-height: 48px;
+  }
+
+  .command-form input {
+    height: 48px;
+    font-size: 16px;
+  }
+
+  .command-form button {
+    min-height: 44px;
+    padding: 0 13px;
+  }
+}
+
+@media (max-width: 430px) {
+  .game-header {
+    align-items: flex-start;
+  }
+
+  .restart {
+    min-height: 40px;
+    padding: 0 10px;
+    font-size: 0.64rem;
+  }
+
+  .inventory-status strong {
+    max-width: 150px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entry {
+    animation: none;
+  }
+
+  .storm-track span {
+    transition: none;
+  }
+}

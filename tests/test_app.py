@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from lab.app import app
@@ -11,30 +13,53 @@ def test_healthz():
     assert response.json()["status"] == "ok"
 
 
-def test_homepage():
+def test_homepage_is_lab_index():
     response = client.get("/")
     assert response.status_code == 200
-    assert "Lab is a small web app" in response.text
-    assert '<main class="content-shell">' in response.text
-    assert 'href="/static/styles.css"' in response.text
+    assert "Stray Lantern Lab" in response.text
+    assert 'class="project-grid"' in response.text
+    assert 'href="/games/lighthouse/"' in response.text
+    assert "The Last Lighthouse Keeper" in response.text
+    assert 'href="/static/lab.css"' in response.text
 
 
-def test_static_styles_cover_content_sections():
-    response = client.get("/static/styles.css")
+def test_lighthouse_game_has_dedicated_route_and_assets():
+    response = client.get("/games/lighthouse/")
     assert response.status_code == 200
-    assert ".content-shell" in response.text
-    assert ".hero" in response.text
-    assert ".card-grid article" in response.text
+    assert "The Last Lighthouse Keeper" in response.text
+    assert '<main class="game-shell">' in response.text
+    assert 'href="/static/games/lighthouse/styles.css"' in response.text
+    assert 'src="/static/games/lighthouse/game-ui.js"' in response.text
+    assert 'href="/"' in response.text
 
 
-def test_mobile_header_stays_single_row_when_sticky():
-    response = client.get("/static/styles.css")
+def test_lighthouse_route_without_trailing_slash_redirects():
+    response = client.get("/games/lighthouse", follow_redirects=False)
+    assert response.status_code in (307, 308)
+    assert response.headers["location"] == "/games/lighthouse/"
+
+
+def test_lighthouse_static_assets_cover_game_interface():
+    response = client.get("/static/games/lighthouse/styles.css")
     assert response.status_code == 200
-    assert ".site-header" in response.text
-    assert "left: 0;" in response.text
-    assert "right: 0;" in response.text
-    assert "overflow-x: auto;" in response.text
-    assert "flex-direction: column;" not in response.text
+    assert ".game-shell" in response.text
+    assert ".transcript" in response.text
+    assert ".command-form" in response.text
+    assert "@media (max-width: 700px)" in response.text
+    assert "min-height: 48px" in response.text
+
+    script = client.get("/static/games/lighthouse/game-ui.js")
+    assert script.status_code == 200
+    assert "game-engine.mjs" in script.text
+
+    engine = client.get("/static/games/lighthouse/game-engine.mjs")
+    assert engine.status_code == 200
+    assert "createGame" in engine.text
+
+
+def test_repository_test_command_includes_game_engine_tests():
+    test_script = (Path(__file__).parent.parent / "scripts" / "test.sh").read_text()
+    assert "node --test tests/game_engine.test.mjs" in test_script
 
 
 def test_blog():

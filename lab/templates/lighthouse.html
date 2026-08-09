@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#081413">
+  <title>The Last Lighthouse Keeper</title>
+  <link rel="stylesheet" href="/static/games/lighthouse/styles.css">
+</head>
+<body>
+  <a class="lab-back" href="/">← Lab</a>
+  <main class="game-shell">
+    <header class="game-header">
+      <div>
+        <p class="eyebrow">An island story</p>
+        <h1>The Last Lighthouse Keeper</h1>
+      </div>
+      <button id="restart" class="restart" type="button">Play again</button>
+    </header>
+
+    <section class="game-window" aria-label="Text adventure">
+      <div class="status-strip" aria-label="Game status">
+        <div class="status-item location-status">
+          <span>Location</span>
+          <strong id="location-label">Lantern room</strong>
+        </div>
+        <div class="status-item">
+          <span>Tide</span>
+          <strong id="tide-label">Falling</strong>
+        </div>
+        <div class="status-item">
+          <span>Storm</span>
+          <strong id="storm-label">12 turns</strong>
+        </div>
+        <div class="status-item inventory-status">
+          <span>Carrying</span>
+          <strong id="inventory-label">Empty</strong>
+        </div>
+      </div>
+
+      <div class="storm-track" role="progressbar" aria-label="Storm progress" aria-valuemin="0" aria-valuemax="12" aria-valuenow="0">
+        <span id="storm-bar"></span>
+      </div>
+
+      <div id="transcript" class="transcript" role="log" aria-live="polite" aria-label="Story transcript"></div>
+
+      <div class="controls">
+        <div id="suggestions" class="suggestions" aria-label="Suggested commands"></div>
+        <form id="command-form" class="command-form" autocomplete="off">
+          <label class="prompt" for="command-input" aria-label="Enter command">&gt;</label>
+          <input id="command-input" name="command" type="text" placeholder="What do you do?" spellcheck="false" autocapitalize="none" aria-describedby="command-help">
+          <button type="submit">Enter</button>
+        </form>
+        <p id="command-help" class="command-help">Try plain commands such as LOOK, DOWN, SEARCH COTTAGE, or USE OIL ON LAMP.</p>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/static/games/lighthouse/game-ui.js"></script>
+</body>
+</html>

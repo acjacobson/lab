@@ -7,6 +7,7 @@ The first version serves mostly static pages, but it is structured as a normal w
 ## Requirements
 
 - Python 3.11+
+- Node.js 22+, for the static game-engine tests
 - Docker, for container builds and containerized runs
 - curl, for smoke checks
 

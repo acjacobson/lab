@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -25,6 +25,20 @@ def home(request: Request):
         request,
         "index.html",
         {"app_name": APP_NAME, "version": __version__, "build_sha": BUILD_SHA},
+    )
+
+
+@app.get("/games/lighthouse")
+def lighthouse_redirect():
+    return RedirectResponse(url="/games/lighthouse/", status_code=307)
+
+
+@app.get("/games/lighthouse/", response_class=HTMLResponse)
+def lighthouse(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "lighthouse.html",
+        {"app_name": APP_NAME},
     )
 
 
