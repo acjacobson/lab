@@ -57,9 +57,14 @@ def test_lighthouse_static_assets_cover_game_interface():
     assert "createGame" in engine.text
 
 
-def test_repository_test_command_includes_game_engine_tests():
-    test_script = (Path(__file__).parent.parent / "scripts" / "test.sh").read_text()
+def test_repository_commands_cover_game_engine_and_live_routes():
+    root = Path(__file__).parent.parent
+    test_script = (root / "scripts" / "test.sh").read_text()
+    smoke_script = (root / "scripts" / "smoke.sh").read_text()
+
     assert "node --test tests/game_engine.test.mjs" in test_script
+    assert 'Stray Lantern Lab' in smoke_script
+    assert '/games/lighthouse/' in smoke_script
 
 
 def test_blog():
