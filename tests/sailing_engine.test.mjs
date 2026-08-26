@@ -6,6 +6,7 @@ import {
   isWaterAt,
   stepGame,
 } from "../lab/static/games/sailing/game-engine.mjs";
+import { buildTerrainCells } from "../lab/static/games/sailing/terrain.mjs";
 
 const TEST_MAP = [
   "#####",
@@ -63,4 +64,25 @@ test("land blocks the ship", () => {
 
   assert.equal(isWaterAt(game.world, game.ship.x, game.ship.y), true);
   assert.ok(game.ship.x >= 21);
+});
+
+test("coastline cells round exposed tile edges into smaller pixel steps", () => {
+  const game = createGame({
+    map: [
+      ".....",
+      ".###.",
+      ".###.",
+      ".###.",
+      ".....",
+    ],
+    start: { x: 8, y: 8 },
+  });
+
+  const terrain = buildTerrainCells(game.world, 4);
+
+  assert.equal(terrain.length, 20);
+  assert.equal(terrain[0].length, 20);
+  assert.equal(terrain[4][4], ".");
+  assert.equal(terrain[5][8], "s");
+  assert.equal(terrain[8][8], "g");
 });

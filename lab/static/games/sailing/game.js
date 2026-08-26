@@ -1,10 +1,14 @@
 import { createGame, stepGame } from "./game-engine.mjs";
+import { buildTerrainCells } from "./terrain.mjs";
 
 const canvas = document.querySelector("#game-canvas");
 const context = canvas.getContext("2d");
 context.imageSmoothingEnabled = false;
 
 const game = createGame();
+const terrainDetail = 4;
+const terrain = buildTerrainCells(game.world, terrainDetail);
+const terrainCellSize = game.world.tileSize / terrainDetail;
 const heldDirections = new Set();
 const pointerDirections = new Map();
 const keyDirections = new Map([
@@ -69,14 +73,6 @@ function clearInput() {
 window.addEventListener("blur", clearInput);
 document.addEventListener("visibilitychange", () => { if (document.hidden) clearInput(); });
 
-function tileColor(world, x, y) {
-  const water = world.map[y]?.[x] === ".";
-  if (water) return "#2c93b8";
-  const neighbors = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-  const coast = neighbors.some(([dx, dy]) => world.map[y + dy]?.[x + dx] === ".");
-  return coast ? "#e7c873" : "#69a84f";
-}
-
 function drawWorld(now) {
   const world = game.world;
   const worldWidth = world.width * world.tileSize;
@@ -95,28 +91,38 @@ function drawWorld(now) {
     for (let x = firstX; x <= lastX; x += 1) {
       const screenX = x * world.tileSize - cameraX;
       const screenY = y * world.tileSize - cameraY;
-      const water = world.map[y][x] === ".";
-      context.fillStyle = tileColor(world, x, y);
-      context.fillRect(screenX, screenY, world.tileSize, world.tileSize);
-
-      if (water) {
+      if (world.map[y][x] === ".") {
         const phase = Math.floor(now / 500) % 3;
         if ((x * 7 + y * 11 + phase) % 5 === 0) {
           context.fillStyle = "#66c8d2";
           context.fillRect(screenX + 3, screenY + 5, 5, 1);
           context.fillRect(screenX + 9, screenY + 6, 3, 1);
         }
-      } else if (tileColor(world, x, y) === "#69a84f") {
-        const hash = (x * 19 + y * 13) % 7;
-        if (hash < 2) {
-          context.fillStyle = "#3f7d45";
-          context.fillRect(screenX + 4 + hash * 5, screenY + 4, 2, 3);
-          context.fillStyle = "#8fc45b";
-          context.fillRect(screenX + 5 + hash * 5, screenY + 3, 1, 2);
-        }
-      } else {
+      }
+    }
+  }
+
+  const firstCellX = Math.floor(cameraX / terrainCellSize);
+  const firstCellY = Math.floor(cameraY / terrainCellSize);
+  const lastCellX = Math.min(terrain[0].length - 1, Math.ceil((cameraX + canvas.width) / terrainCellSize));
+  const lastCellY = Math.min(terrain.length - 1, Math.ceil((cameraY + canvas.height) / terrainCellSize));
+
+  for (let cellY = firstCellY; cellY <= lastCellY; cellY += 1) {
+    for (let cellX = firstCellX; cellX <= lastCellX; cellX += 1) {
+      const material = terrain[cellY][cellX];
+      if (material === ".") continue;
+      const screenX = cellX * terrainCellSize - cameraX;
+      const screenY = cellY * terrainCellSize - cameraY;
+      context.fillStyle = material === "s" ? "#e7c873" : "#69a84f";
+      context.fillRect(screenX, screenY, terrainCellSize, terrainCellSize);
+
+      const hash = cellX * 19 + cellY * 13;
+      if (material === "g" && hash % 29 === 0) {
+        context.fillStyle = "#3f7d45";
+        context.fillRect(screenX + 1, screenY + 1, 1, 2);
+      } else if (material === "s" && hash % 31 === 0) {
         context.fillStyle = "#f3dc91";
-        if ((x + y) % 3 === 0) context.fillRect(screenX + 5, screenY + 9, 2, 1);
+        context.fillRect(screenX + 1, screenY + 2, 2, 1);
       }
     }
   }
