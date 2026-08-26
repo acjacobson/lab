@@ -42,6 +42,20 @@ def lighthouse(request: Request):
     )
 
 
+@app.get("/games/sailing")
+def sailing_redirect():
+    return RedirectResponse(url="/games/sailing/", status_code=307)
+
+
+@app.get("/games/sailing/", response_class=HTMLResponse)
+def sailing(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "sailing.html",
+        {"app_name": APP_NAME},
+    )
+
+
 @app.get("/blog", response_class=HTMLResponse)
 def blog(request: Request):
     return templates.TemplateResponse(request, "blog.html", {"app_name": APP_NAME})

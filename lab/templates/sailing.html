@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#163d57">
+  <title>Sailing · Stray Lantern Lab</title>
+  <link rel="stylesheet" href="/static/games/sailing/styles.css">
+</head>
+<body>
+  <main class="game-page">
+    <header class="game-header">
+      <a href="/">← Lab</a>
+      <h1>Sailing</h1>
+      <p>Sail with the controls.</p>
+    </header>
+
+    <section class="game-frame" aria-label="Pixel sailing game">
+      <canvas id="game-canvas" width="320" height="180" aria-label="A ship sailing between islands"></canvas>
+      <div class="d-pad" aria-label="Sailing controls">
+        <button class="north" type="button" data-direction="north" aria-label="Sail north">▲</button>
+        <button class="west" type="button" data-direction="west" aria-label="Sail west">◀</button>
+        <button class="east" type="button" data-direction="east" aria-label="Sail east">▶</button>
+        <button class="south" type="button" data-direction="south" aria-label="Sail south">▼</button>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="/static/games/sailing/game.js"></script>
+</body>
+</html>
