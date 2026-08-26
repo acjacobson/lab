@@ -72,7 +72,7 @@ export function createGame({ map = DEFAULT_MAP, start, tileSize = TILE_SIZE } = 
     width: map[0].length,
     height: map.length,
   };
-  const spawn = start ?? { x: 32 * tileSize + tileSize / 2, y: 22 * tileSize + tileSize / 2 };
+  const spawn = start ?? { x: 39 * tileSize + tileSize / 2, y: 24 * tileSize + tileSize / 2 };
   const ship = { x: spawn.x, y: spawn.y, radius: 5, heading: "north" };
   if (!canShipFit(world, ship.x, ship.y, ship.radius)) {
     throw new Error("Ship must start on navigable water");

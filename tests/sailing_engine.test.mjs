@@ -20,6 +20,20 @@ test("the ship starts on navigable water", () => {
   assert.equal(isWaterAt(game.world, game.ship.x, game.ship.y), true);
 });
 
+test("the opening camera includes enough land to read as an island world", () => {
+  const game = createGame();
+  const firstX = Math.floor((game.ship.x - 160) / game.world.tileSize);
+  const firstY = Math.floor((game.ship.y - 90) / game.world.tileSize);
+  let visibleLand = 0;
+  for (let y = firstY; y <= firstY + 12; y += 1) {
+    for (let x = firstX; x <= firstX + 20; x += 1) {
+      if (game.world.map[y]?.[x] === "#") visibleLand += 1;
+    }
+  }
+
+  assert.ok(visibleLand >= 12);
+});
+
 test("held input sails the ship across open water", () => {
   const game = createGame({ map: TEST_MAP, start: { x: 24, y: 24 } });
 
