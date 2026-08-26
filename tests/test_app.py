@@ -53,6 +53,18 @@ def test_sailing_game_has_phone_playable_route_and_assets():
     assert "createGame" in engine.text
 
 
+def test_sailing_controls_are_in_a_dedicated_dock_after_the_map():
+    response = client.get("/games/sailing/")
+    frame_start = response.text.index('<section class="game-frame"')
+    frame_end = response.text.index("</section>", frame_start)
+    control_dock = response.text.index('<section class="control-dock"')
+
+    assert frame_end < control_dock
+
+    stylesheet = client.get("/static/games/sailing/styles.css").text
+    assert ".control-dock" in stylesheet
+
+
 def test_sailing_route_without_trailing_slash_redirects():
     response = client.get("/games/sailing", follow_redirects=False)
     assert response.status_code in (307, 308)

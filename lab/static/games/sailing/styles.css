@@ -49,10 +49,14 @@ button, a { font: inherit; }
   image-rendering: crisp-edges;
 }
 
+.control-dock {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding: 14px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+}
+
 .d-pad {
-  position: absolute;
-  left: max(10px, env(safe-area-inset-left));
-  bottom: 10px;
   display: grid;
   grid-template-columns: repeat(3, 48px);
   grid-template-rows: repeat(3, 48px);
