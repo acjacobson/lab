@@ -31,7 +31,7 @@
             <div class="selector-frame">
               <p class="selector-kicker">Select a game</p>
               <h2 id="selector-title">Choose your challenge</h2>
-              <div class="game-choice-list" role="list">
+              <div class="game-choice-list" role="group" aria-labelledby="selector-title">
                 <button class="game-choice" type="button" data-game="block-drop" aria-pressed="true">
                   <span class="choice-number" aria-hidden="true">01</span>
                   <span class="choice-copy">
@@ -65,7 +65,7 @@
                   <span class="choice-arrow" aria-hidden="true">›</span>
                 </button>
               </div>
-              <p id="screen-message" class="screen-message">Press start to play</p>
+              <p id="screen-message" class="screen-message" role="status" aria-live="polite" aria-atomic="true">Press start to play</p>
             </div>
           </section>
         </div>
@@ -78,8 +78,8 @@
     <section class="control-panel" aria-label="Arcade controls">
       <div class="control-panel-header">
         <span>PLAYER 1</span>
-        <span id="credit-display">READY</span>
-        <span>HIGH SCORE <b id="high-score">000000</b></span>
+        <span id="credit-display" role="status" aria-live="polite" aria-atomic="true">READY</span>
+        <span>HIGH SCORE <b id="high-score" role="status" aria-live="polite" aria-atomic="true">000000</b></span>
       </div>
 
       <div class="control-panel-controls">

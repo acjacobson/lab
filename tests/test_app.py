@@ -75,6 +75,62 @@ def test_arcade_route_has_accessible_control_panel_actions_and_responsive_styles
     assert "@media (max-width: 700px)" in stylesheet.text
 
 
+def test_arcade_selector_keeps_all_four_games_reachable_on_small_phones():
+    response = client.get("/games/arcade/")
+    assert response.status_code == 200
+    html = response.text
+    choices = re.findall(r'<button[^>]+class="game-choice"[^>]*>', html)
+
+    assert [
+        game_id
+        for choice in choices
+        for game_id in re.findall(r'data-game="([^"]+)"', choice)
+    ] == [
+        "block-drop",
+        "brick-breaker",
+        "alien-blaster",
+        "maze-muncher",
+    ]
+    assert 'class="game-choice-list" role="group"' in html
+
+    stylesheet = client.get("/static/games/arcade/styles.css").text
+    phone_styles = stylesheet[stylesheet.index("@media (max-width: 430px)"):]
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in phone_styles
+    assert "min-height: 44px" in phone_styles
+    assert "overflow-y: auto" in stylesheet
+
+
+def test_arcade_runtime_hooks_have_one_polite_status_each():
+    response = client.get("/games/arcade/")
+    assert response.status_code == 200
+    html = response.text
+
+    for element_id in ("screen-message", "credit-display", "high-score"):
+        element = re.search(
+            rf"<[a-z]+[^>]+id=\"{element_id}\"[^>]*>",
+            html,
+        )
+        assert element, f"missing runtime hook: {element_id}"
+        attributes = element.group(0)
+        assert 'role="status"' in attributes
+        assert 'aria-live="polite"' in attributes
+        assert 'aria-atomic="true"' in attributes
+
+    assert 'class="arcade-bezel" aria-label="Arcade screen" aria-live' not in html
+    assert html.count('role="status"') == 3
+
+
+def test_arcade_game_choice_focus_indicator_is_distinct_from_selection_state():
+    stylesheet = client.get("/static/games/arcade/styles.css").text
+    focus_start = stylesheet.index(".game-choice:focus-visible")
+    focus_end = stylesheet.index("}", focus_start)
+    focus_rule = stylesheet[focus_start:focus_end]
+
+    assert "outline: 3px solid var(--cyan)" in focus_rule
+    assert "outline-offset: 2px" in focus_rule
+    assert "outline: none" not in focus_rule
+
+
 def test_arcade_route_without_trailing_slash_redirects():
     response = client.get("/games/arcade", follow_redirects=False)
     assert response.status_code in (307, 308)

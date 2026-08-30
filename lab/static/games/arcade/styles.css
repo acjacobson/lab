@@ -257,12 +257,16 @@ a:focus-visible {
   inset: 0;
   display: grid;
   place-items: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: clamp(14px, 4vw, 36px);
+  scroll-padding: 8px;
   background: linear-gradient(180deg, rgb(3 19 23 / 80%), rgb(5 13 20 / 93%));
 }
 
 .selector-frame {
   width: min(100%, 700px);
+  margin: auto;
   padding: clamp(16px, 3vw, 28px);
   border: 2px solid rgb(91 212 207 / 75%);
   border-radius: 5px;
@@ -311,12 +315,17 @@ a:focus-visible {
 }
 
 .game-choice:hover,
-.game-choice:focus-visible,
 .game-choice[aria-pressed="true"] {
   border-color: var(--marquee-hot);
   background: rgb(102 67 44 / 62%);
   box-shadow: 0 0 12px rgb(255 223 120 / 12%);
-  outline: none;
+}
+
+.game-choice:focus-visible {
+  border-color: var(--cyan);
+  outline: 3px solid var(--cyan);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 1px rgb(91 212 207 / 70%), 0 0 12px rgb(91 212 207 / 28%);
 }
 
 .game-choice:active {
@@ -773,7 +782,7 @@ a:focus-visible {
   }
 
   .game-choice-list {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .game-choice {
