@@ -71,6 +71,59 @@ def test_sailing_route_without_trailing_slash_redirects():
     assert response.headers["location"] == "/games/sailing/"
 
 
+def test_sailing_hud_and_trade_action_have_accessible_phone_hooks():
+    response = client.get("/games/sailing/")
+    assert response.status_code == 200
+    assert '<section class="status-hud"' in response.text
+    assert 'id="coins-value"' in response.text
+    assert 'id="cargo-value"' in response.text
+    assert 'id="current-port-value"' not in response.text
+    assert '<button id="trade-button"' in response.text
+    assert 'aria-controls="trade-dialog"' in response.text
+    assert '>Trade<' in response.text
+
+    stylesheet = client.get("/static/games/sailing/styles.css").text
+    assert ".status-hud" in stylesheet
+    assert ".trade-button" in stylesheet
+    assert "min-height: 44px" in stylesheet
+
+
+def test_sailing_trade_modal_locks_scroll_and_test_api_does_not_expose_mutable_game():
+    stylesheet = client.get("/static/games/sailing/styles.css").text
+    script = client.get("/static/games/sailing/game.js").text
+
+    assert "html.trade-modal-open" in stylesheet
+    assert "body.trade-modal-open" in stylesheet
+    assert "lockBackgroundScroll();" in script
+    assert "unlockBackgroundScroll();" in script
+    assert "window.__SAILING_GAME__ = Object.freeze({" in script
+    assert "\n  game," not in script
+
+
+def test_sailing_trade_dialog_has_buy_sell_tabs_feedback_and_close():
+    response = client.get("/games/sailing/")
+    assert response.status_code == 200
+    assert '<dialog id="trade-dialog"' in response.text
+    assert 'aria-labelledby="trade-dialog-title"' in response.text
+    assert 'id="trade-dialog-title"' in response.text
+    assert 'id="trade-port-name"' in response.text
+    assert 'id="buy-tab"' in response.text
+    assert 'id="sell-tab"' in response.text
+    assert 'id="buy-list"' in response.text
+    assert 'id="sell-list"' in response.text
+    assert 'id="trade-feedback"' in response.text
+    assert 'id="close-trade"' in response.text
+    assert 'aria-label="Close trade dialog"' in response.text
+
+
+def test_sailing_trade_module_is_served_with_the_game_assets():
+    trading = client.get("/static/games/sailing/trading.mjs")
+    assert trading.status_code == 200
+    assert "PORTS" in trading.text
+    assert "buyItem" in trading.text
+    assert "sellItem" in trading.text
+
+
 def test_lighthouse_static_assets_cover_game_interface():
     response = client.get("/static/games/lighthouse/styles.css")
     assert response.status_code == 200

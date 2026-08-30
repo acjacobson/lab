@@ -1,3 +1,5 @@
+import { createTradeState } from "./trading.mjs";
+
 export const TILE_SIZE = 16;
 export const SHIP_SPEED = 70;
 
@@ -77,7 +79,7 @@ export function createGame({ map = DEFAULT_MAP, start, tileSize = TILE_SIZE } = 
   if (!canShipFit(world, ship.x, ship.y, ship.radius)) {
     throw new Error("Ship must start on navigable water");
   }
-  return { world, ship };
+  return { world, ship, trade: createTradeState() };
 }
 
 export function stepGame(game, input, deltaSeconds) {

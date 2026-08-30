@@ -16,6 +16,10 @@
     </header>
 
     <section class="game-frame" aria-label="Pixel sailing game">
+      <section class="status-hud" aria-label="Voyage status" aria-live="polite">
+        <span>Coins <strong id="coins-value">100</strong></span>
+        <span>Cargo <strong id="cargo-value">0/8</strong></span>
+      </section>
       <canvas id="game-canvas" width="320" height="180" aria-label="A ship sailing between islands"></canvas>
     </section>
     <section class="control-dock" aria-label="Sailing controls">
@@ -25,7 +29,38 @@
         <button class="east" type="button" data-direction="east" aria-label="Sail east">▶</button>
         <button class="south" type="button" data-direction="south" aria-label="Sail south">▼</button>
       </div>
+      <button id="trade-button" class="trade-button" type="button" aria-controls="trade-dialog" aria-haspopup="dialog" disabled>Trade</button>
     </section>
+
+    <dialog id="trade-dialog" class="trade-dialog" aria-labelledby="trade-dialog-title">
+      <div class="trade-panel">
+        <header class="trade-header">
+          <div>
+            <p class="eyebrow">Port market</p>
+            <h2 id="trade-dialog-title">Trade at <span id="trade-port-name">Port</span></h2>
+          </div>
+          <p class="trade-summary" aria-label="Trade wallet">
+            <span>Coins <strong id="trade-coins-value">100</strong></span>
+            <span>Cargo <strong id="trade-cargo-value">0/8</strong></span>
+          </p>
+        </header>
+
+        <div class="trade-tabs" role="tablist" aria-label="Trade actions">
+          <button id="buy-tab" type="button" role="tab" aria-selected="true" aria-controls="buy-panel">Buy</button>
+          <button id="sell-tab" type="button" role="tab" aria-selected="false" aria-controls="sell-panel" tabindex="-1">Sell</button>
+        </div>
+
+        <section id="buy-panel" class="trade-panel-section" role="tabpanel" aria-labelledby="buy-tab">
+          <div id="buy-list" class="trade-list" aria-label="Goods for sale"></div>
+        </section>
+        <section id="sell-panel" class="trade-panel-section" role="tabpanel" aria-labelledby="sell-tab" hidden>
+          <div id="sell-list" class="trade-list" aria-label="Cargo to sell"></div>
+        </section>
+
+        <p id="trade-feedback" class="trade-feedback" role="status" aria-live="polite"></p>
+        <button id="close-trade" class="close-trade" type="button" aria-label="Close trade dialog">Close</button>
+      </div>
+    </dialog>
   </main>
   <script type="module" src="/static/games/sailing/game.js"></script>
 </body>

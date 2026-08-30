@@ -1,4 +1,5 @@
 import { createGame, stepGame } from "./game-engine.mjs";
+import { ITEM_CATALOG, PORTS, buyItem, cargoUsed, nearbyPort, sellItem } from "./trading.mjs";
 import { buildTerrainCells } from "./terrain.mjs";
 
 const canvas = document.querySelector("#game-canvas");
@@ -18,7 +19,33 @@ const keyDirections = new Map([
   ["ArrowRight", "east"], ["d", "east"], ["D", "east"],
 ]);
 
+const coinsValue = document.querySelector("#coins-value");
+const cargoValue = document.querySelector("#cargo-value");
+const tradeButton = document.querySelector("#trade-button");
+const tradeDialog = document.querySelector("#trade-dialog");
+const tradePortName = document.querySelector("#trade-port-name");
+const tradeCoinsValue = document.querySelector("#trade-coins-value");
+const tradeCargoValue = document.querySelector("#trade-cargo-value");
+const buyTab = document.querySelector("#buy-tab");
+const sellTab = document.querySelector("#sell-tab");
+const buyPanel = document.querySelector("#buy-panel");
+const sellPanel = document.querySelector("#sell-panel");
+const buyList = document.querySelector("#buy-list");
+const sellList = document.querySelector("#sell-list");
+const tradeFeedback = document.querySelector("#trade-feedback");
+const closeTradeButton = document.querySelector("#close-trade");
+
+let dialogOpen = false;
+let activeTradePort = null;
+let activeTab = "buy";
+let scrollLockState = null;
+
+function currentPort() {
+  return nearbyPort(game.ship, PORTS);
+}
+
 function currentInput() {
+  if (dialogOpen) return { x: 0, y: 0 };
   return {
     x: Number(heldDirections.has("east")) - Number(heldDirections.has("west")),
     y: Number(heldDirections.has("south")) - Number(heldDirections.has("north")),
@@ -39,6 +66,7 @@ function releasePointer(pointerId) {
 
 document.querySelectorAll("[data-direction]").forEach((button) => {
   button.addEventListener("pointerdown", (event) => {
+    if (dialogOpen) return;
     event.preventDefault();
     const direction = button.dataset.direction;
     pointerDirections.set(event.pointerId, direction);
@@ -52,6 +80,7 @@ document.querySelectorAll("[data-direction]").forEach((button) => {
 });
 
 window.addEventListener("keydown", (event) => {
+  if (dialogOpen) return;
   const direction = keyDirections.get(event.key);
   if (!direction) return;
   event.preventDefault();
@@ -72,6 +101,223 @@ function clearInput() {
 }
 window.addEventListener("blur", clearInput);
 document.addEventListener("visibilitychange", () => { if (document.hidden) clearInput(); });
+
+function itemName(itemId) {
+  return ITEM_CATALOG[itemId]?.name ?? itemId;
+}
+
+function updateHud() {
+  const port = currentPort();
+  const used = cargoUsed(game.trade);
+  coinsValue.textContent = String(game.trade.coins);
+  cargoValue.textContent = `${used}/${game.trade.capacity}`;
+  tradeButton.disabled = !port || dialogOpen;
+  tradeCoinsValue.textContent = String(game.trade.coins);
+  tradeCargoValue.textContent = `${used}/${game.trade.capacity}`;
+}
+
+function setTradeTab(tab) {
+  activeTab = tab === "sell" ? "sell" : "buy";
+  const buying = activeTab === "buy";
+  buyTab.setAttribute("aria-selected", String(buying));
+  sellTab.setAttribute("aria-selected", String(!buying));
+  buyTab.tabIndex = buying ? 0 : -1;
+  sellTab.tabIndex = buying ? -1 : 0;
+  buyPanel.hidden = !buying;
+  sellPanel.hidden = buying;
+}
+
+function tradeRow({ itemId, price, action, disabled, onClick }) {
+  const row = document.createElement("div");
+  row.className = "trade-row";
+
+  const copy = document.createElement("div");
+  copy.className = "trade-row-content";
+  const name = document.createElement("span");
+  name.className = "trade-item-name";
+  name.textContent = itemName(itemId);
+  const meta = document.createElement("span");
+  meta.className = "trade-item-meta";
+  meta.textContent = `${price} coins`;
+  copy.append(name, meta);
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = action === "buy" ? "Buy 1" : "Sell 1";
+  button.setAttribute("aria-label", `${action === "buy" ? "Buy" : "Sell"} one ${itemName(itemId)}`);
+  button.disabled = disabled;
+  button.addEventListener("click", onClick);
+
+  row.append(copy, button);
+  return row;
+}
+
+function renderBuyRows() {
+  buyList.replaceChildren(...activeTradePort.goods.map((good) => tradeRow({
+    itemId: good.itemId,
+    price: good.buyPrice,
+    action: "buy",
+    disabled: game.trade.coins < good.buyPrice || cargoUsed(game.trade) >= game.trade.capacity,
+    onClick: () => {
+      const result = buyItem(game.trade, activeTradePort, good.itemId);
+      tradeFeedback.textContent = result.ok ? `Bought 1 ${itemName(good.itemId)}.` : result.reason;
+      renderTrade();
+      updateHud();
+    },
+  })));
+}
+
+function renderSellRows() {
+  const carriedItems = Object.entries(game.trade.cargo).filter(([, quantity]) => quantity > 0);
+  if (carriedItems.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "trade-empty";
+    empty.textContent = "No cargo aboard.";
+    sellList.replaceChildren(empty);
+    return;
+  }
+
+  sellList.replaceChildren(...carriedItems.map(([itemId, quantity]) => {
+    const price = activeTradePort.sellPrices[itemId];
+    return tradeRow({
+      itemId,
+      price: Number.isInteger(price) ? price : 0,
+      action: "sell",
+      disabled: !Number.isInteger(price) || price < 1,
+      onClick: () => {
+        const result = sellItem(game.trade, activeTradePort, itemId);
+        tradeFeedback.textContent = result.ok ? `Sold 1 ${itemName(itemId)}.` : result.reason;
+        renderTrade();
+        updateHud();
+      },
+    });
+  }));
+}
+
+function renderTrade() {
+  if (!activeTradePort) return;
+  tradePortName.textContent = activeTradePort.name;
+  tradeCoinsValue.textContent = String(game.trade.coins);
+  tradeCargoValue.textContent = `${cargoUsed(game.trade)}/${game.trade.capacity}`;
+  renderBuyRows();
+  renderSellRows();
+  setTradeTab(activeTab);
+}
+
+function lockBackgroundScroll() {
+  if (scrollLockState) return;
+  scrollLockState = {
+    x: window.scrollX,
+    y: window.scrollY,
+    htmlStyle: document.documentElement.getAttribute("style"),
+    bodyStyle: document.body.getAttribute("style"),
+  };
+  document.documentElement.classList.add("trade-modal-open");
+  document.body.classList.add("trade-modal-open");
+  document.body.style.top = `-${scrollLockState.y}px`;
+  document.body.style.left = `-${scrollLockState.x}px`;
+}
+
+function restoreStyleAttribute(element, value) {
+  if (value === null) element.removeAttribute("style");
+  else element.setAttribute("style", value);
+}
+
+function unlockBackgroundScroll() {
+  if (!scrollLockState) return;
+  const { x, y, htmlStyle, bodyStyle } = scrollLockState;
+  scrollLockState = null;
+  document.documentElement.classList.remove("trade-modal-open");
+  document.body.classList.remove("trade-modal-open");
+  restoreStyleAttribute(document.documentElement, htmlStyle);
+  restoreStyleAttribute(document.body, bodyStyle);
+  window.scrollTo(x, y);
+}
+
+function finishClosingTrade() {
+  dialogOpen = false;
+  activeTradePort = null;
+  unlockBackgroundScroll();
+  clearInput();
+  updateHud();
+}
+
+function closeTrade() {
+  if (!dialogOpen) return;
+  if (typeof tradeDialog.close === "function" && tradeDialog.open) tradeDialog.close();
+  else {
+    tradeDialog.removeAttribute("open");
+    finishClosingTrade();
+  }
+}
+
+function openTrade() {
+  const port = currentPort();
+  if (!port || dialogOpen) return;
+  clearInput();
+  activeTradePort = port;
+  activeTab = "buy";
+  tradeFeedback.textContent = "";
+  dialogOpen = true;
+  lockBackgroundScroll();
+  renderTrade();
+  if (typeof tradeDialog.showModal === "function") tradeDialog.showModal();
+  else tradeDialog.setAttribute("open", "");
+  updateHud();
+}
+
+tradeButton.addEventListener("click", openTrade);
+closeTradeButton.addEventListener("click", closeTrade);
+buyTab.addEventListener("click", () => setTradeTab("buy"));
+sellTab.addEventListener("click", () => setTradeTab("sell"));
+tradeDialog.addEventListener("close", finishClosingTrade);
+tradeDialog.addEventListener("cancel", () => clearInput());
+tradeDialog.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  event.preventDefault();
+  closeTrade();
+});
+
+function drawPort(port, cameraX, cameraY) {
+  const settlementX = Math.round(port.settlement.x - cameraX);
+  const settlementY = Math.round(port.settlement.y - cameraY);
+  const berthX = Math.round(port.berth.x - cameraX);
+  const berthY = Math.round(port.berth.y - cameraY);
+
+  if (berthX < -30 || berthX > canvas.width + 30 || berthY < -30 || berthY > canvas.height + 30) return;
+
+  const dockStartX = Math.round(Math.min(port.dock.x1, port.dock.x2) - cameraX);
+  const dockEndX = Math.round(Math.max(port.dock.x1, port.dock.x2) - cameraX);
+  const dockY = Math.round((port.dock.y1 + port.dock.y2) / 2 - cameraY);
+  context.fillStyle = "#70472f";
+  context.fillRect(dockStartX, dockY - 2, Math.max(4, dockEndX - dockStartX), 4);
+  context.fillStyle = "#c28a4d";
+  for (let x = dockStartX + 2; x <= dockEndX; x += 7) context.fillRect(x, dockY - 4, 2, 8);
+  context.fillStyle = "#e7c873";
+  context.fillRect(berthX - 2, berthY - 2, 4, 4);
+
+  context.fillStyle = "#5b2d2a";
+  context.fillRect(settlementX - 9, settlementY - 5, 18, 11);
+  context.fillStyle = "#d36f45";
+  context.fillRect(settlementX - 11, settlementY - 8, 22, 4);
+  context.fillStyle = "#f4d38b";
+  context.fillRect(settlementX - 5, settlementY - 1, 3, 4);
+  context.fillRect(settlementX + 3, settlementY - 1, 3, 4);
+  context.fillStyle = "#9b5038";
+  context.fillRect(settlementX + 8, settlementY - 14, 2, 10);
+  context.fillStyle = "#ffe59a";
+  context.fillRect(settlementX + 10, settlementY - 14, 5, 3);
+
+  const distance = Math.hypot(game.ship.x - port.berth.x, game.ship.y - port.berth.y);
+  if (distance > 150) return;
+  context.fillStyle = "#fff4d6";
+  context.font = "6px ui-monospace, monospace";
+  const labelWidth = context.measureText(port.name).width;
+  if (settlementX - labelWidth / 2 < 0 || settlementX + labelWidth / 2 > canvas.width || settlementY - 18 < 0 || settlementY - 18 > canvas.height) return;
+  context.textAlign = "center";
+  context.fillText(port.name, settlementX, settlementY - 18);
+  context.textAlign = "start";
+}
 
 function drawWorld(now) {
   const world = game.world;
@@ -127,6 +373,7 @@ function drawWorld(now) {
     }
   }
 
+  PORTS.forEach((port) => drawPort(port, cameraX, cameraY));
   drawShip(Math.round(game.ship.x - cameraX), Math.round(game.ship.y - cameraY));
 }
 
@@ -159,19 +406,55 @@ function drawShip(x, y) {
   context.restore();
 }
 
+function publicState() {
+  const port = currentPort();
+  return Object.freeze({
+    x: game.ship.x,
+    y: game.ship.y,
+    heading: game.ship.heading,
+    currentPort: port?.id ?? null,
+    currentPortName: port?.name ?? null,
+    coins: game.trade.coins,
+    cargo: Object.freeze({ ...game.trade.cargo }),
+    cargoUsed: cargoUsed(game.trade),
+    capacity: game.trade.capacity,
+    modalOpen: dialogOpen,
+  });
+}
+
+function positionShipAtBerth(portId) {
+  const port = PORTS.find((candidate) => candidate.id === portId);
+  if (!port) return false;
+  if (dialogOpen) closeTrade();
+  game.ship.x = port.berth.x;
+  game.ship.y = port.berth.y;
+  clearInput();
+  updateHud();
+  return true;
+}
+
+window.__SAILING_GAME__ = Object.freeze({
+  getState: publicState,
+  positionShipAtBerth,
+  get currentPort() { return currentPort()?.id ?? null; },
+  get currentPortName() { return currentPort()?.name ?? null; },
+  get coins() { return game.trade.coins; },
+  get cargo() { return Object.freeze({ ...game.trade.cargo }); },
+  get capacity() { return game.trade.capacity; },
+  get cargoUsed() { return cargoUsed(game.trade); },
+  get modalOpen() { return dialogOpen; },
+  get modalState() { return dialogOpen ? "open" : "closed"; },
+});
+
 let previousTime = performance.now();
 function frame(now) {
   const delta = (now - previousTime) / 1000;
   previousTime = now;
-  stepGame(game, currentInput(), delta);
+  if (!dialogOpen) stepGame(game, currentInput(), delta);
+  updateHud();
   drawWorld(now);
   requestAnimationFrame(frame);
 }
 
-window.__SAILING_GAME__ = {
-  game,
-  currentInput,
-  clearInput,
-  getState: () => ({ x: game.ship.x, y: game.ship.y, heading: game.ship.heading }),
-};
+updateHud();
 requestAnimationFrame(frame);
