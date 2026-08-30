@@ -10,10 +10,23 @@ const DEFAULT_PADDLE_HEIGHT = 10;
 const DEFAULT_PADDLE_SPEED = 240;
 const DEFAULT_BALL_RADIUS = 4;
 const DEFAULT_BALL_SPEED = 180;
+const MIN_FIXED_STEP = 1 / 1000;
+const MAX_FRAME_ELAPSED = 0.25;
+const MAX_SUBSTEPS = 16;
 const EPSILON = 1e-12;
 
 function finitePositive(value, fallback) {
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function safeFixedStep(value) {
+  return Math.max(MIN_FIXED_STEP, finitePositive(value, DEFAULT_FIXED_STEP));
+}
+
+function boundedElapsed(value) {
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return 0;
+  return Math.min(MAX_FRAME_ELAPSED, Math.max(0, numeric));
 }
 
 function nonNegativeInteger(value, fallback) {
@@ -278,7 +291,7 @@ export function createBrickBreaker(options = {}) {
   const rows = nonNegativeInteger(settings.brickRows ?? settings.rows, DEFAULT_BRICK_ROWS);
   const columns = positiveInteger(settings.brickColumns ?? settings.columns, DEFAULT_BRICK_COLUMNS);
   const lives = positiveInteger(settings.lives, DEFAULT_LIVES);
-  const fixedStep = finitePositive(Number(settings.fixedStep), DEFAULT_FIXED_STEP);
+  const fixedStep = safeFixedStep(Number(settings.fixedStep));
   const paddleHeight = finitePositive(Number(settings.paddleHeight), DEFAULT_PADDLE_HEIGHT);
   const paddleWidth = clamp(
     finitePositive(Number(settings.paddleWidth), DEFAULT_PADDLE_WIDTH),
@@ -380,16 +393,35 @@ export function stepBrickBreaker(candidate, elapsedSeconds = undefined) {
   const state = resolveState(candidate);
   if (state.status !== "playing") return state;
 
-  const elapsed = elapsedSeconds === undefined
-    ? state.fixedStep
-    : Math.max(0, Number(elapsedSeconds) || 0);
-  state.accumulator += elapsed;
+  const fixedStep = safeFixedStep(Number(state.fixedStep));
+  state.fixedStep = fixedStep;
+  const elapsed = elapsedSeconds === undefined ? fixedStep : boundedElapsed(elapsedSeconds);
+  const previousAccumulator = Number.isFinite(state.accumulator) && state.accumulator >= 0
+    ? state.accumulator
+    : 0;
+  state.accumulator = previousAccumulator + elapsed;
 
-  while (state.accumulator + EPSILON >= state.fixedStep && state.status === "playing") {
-    state.accumulator -= state.fixedStep;
+  let substeps = 0;
+  while (
+    state.accumulator + EPSILON >= fixedStep
+    && state.status === "playing"
+    && substeps < MAX_SUBSTEPS
+  ) {
+    state.accumulator -= fixedStep;
     if (Math.abs(state.accumulator) < EPSILON) state.accumulator = 0;
     state.ball.launched = true;
-    simulateFixedStep(state, state.fixedStep);
+    simulateFixedStep(state, fixedStep);
+    substeps += 1;
+  }
+
+  // Drop a stalled or oversized backlog rather than replaying it forever on
+  // later frames. Normal frames never reach this guard.
+  if (
+    !Number.isFinite(state.accumulator)
+    || (state.accumulator + EPSILON >= fixedStep && substeps >= MAX_SUBSTEPS)
+    || (state.accumulator + EPSILON >= fixedStep && state.status !== "playing")
+  ) {
+    state.accumulator = 0;
   }
   state.launched = Boolean(state.ball.launched);
   return state;

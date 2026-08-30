@@ -9,6 +9,7 @@ import {
 } from "../lab/static/games/arcade/brick-breaker.mjs";
 
 const FIXED_STEP = 1 / 60;
+const MIN_SAFE_FIXED_STEP = 1 / 1000;
 
 function hitBrick(game, brick = game.bricks[0]) {
   game.ball.x = brick.x + brick.width / 2;
@@ -115,6 +116,34 @@ test("fixed-step updates are independent of frame chunking", () => {
   assert.equal(oneFrame.ball.y, twoFrames.ball.y);
   assert.equal(oneFrame.ball.vx, twoFrames.ball.vx);
   assert.equal(oneFrame.ball.vy, twoFrames.ball.vy);
+});
+
+test("a huge elapsed frame is capped without retaining an unbounded accumulator", () => {
+  const game = createBrickBreaker({
+    bricks: [{ id: "idle", x: 8, y: 8, width: 20, height: 10 }],
+  });
+  launchBrickBreaker(game);
+  game.ball.x = game.width / 2;
+  game.ball.y = game.height / 2;
+  game.ball.vx = 0;
+  game.ball.vy = 0;
+
+  stepBrickBreaker(game, Number.MAX_VALUE);
+
+  assert.equal(game.status, "playing");
+  assert.ok(Number.isFinite(game.accumulator));
+  assert.ok(game.accumulator >= 0);
+  assert.ok(game.accumulator < game.fixedStep);
+});
+
+test("a tiny configured fixed step is clamped to a safe minimum", () => {
+  const game = createBrickBreaker({ fixedStep: Number.MIN_VALUE });
+
+  assert.equal(game.fixedStep, MIN_SAFE_FIXED_STEP);
+  launchBrickBreaker(game);
+  stepBrickBreaker(game, game.fixedStep);
+
+  assert.ok(Number.isFinite(game.accumulator));
 });
 
 test("losing a ball costs one life and resets the round", () => {
