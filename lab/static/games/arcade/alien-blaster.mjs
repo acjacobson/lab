@@ -19,9 +19,24 @@ const DEFAULT_ENEMY_SHOT_INTERVAL = 1.2;
 const DEFAULT_ENEMY_FIRE_CHANCE = 0.35;
 const DEFAULT_LIVES = 3;
 const DEFAULT_ALIEN_POINTS = 10;
+const DEFAULT_FIXED_STEP = 1 / 60;
+const MIN_FIXED_STEP = 1 / 1000;
+const MAX_FIXED_STEPS_PER_CALL = 32;
+// Browser frame gaps longer than this are intentionally discarded rather than
+// replayed as an unbounded catch-up loop on the main thread.
+const MAX_ELAPSED_SECONDS = 0.5;
+const MIN_ENEMY_FIRE_INTERVAL = 1 / 120;
+const MAX_AUTOMATIC_ENEMY_FIRE_EVENTS = 8;
+const EPSILON = 1e-10;
 
 function finiteNumber(value, fallback) {
-  return Number.isFinite(Number(value)) ? Number(value) : fallback;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function positiveNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
 }
 
 function positiveInteger(value, fallback) {
@@ -30,7 +45,23 @@ function positiveInteger(value, fallback) {
 }
 
 function nonNegative(value, fallback) {
-  return Math.max(0, finiteNumber(value, fallback));
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, number) : fallback;
+}
+
+function elapsedValue(value, fallback = DEFAULT_FIXED_STEP) {
+  if (value === undefined) return fallback;
+  const number = Number(value);
+  if (Number.isNaN(number)) return 0;
+  return Math.max(0, number);
+}
+
+function enemyFireIntervalValue(value) {
+  if (value === undefined) return DEFAULT_ENEMY_SHOT_INTERVAL;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return DEFAULT_ENEMY_SHOT_INTERVAL;
+  if (number <= 0) return 0;
+  return Math.max(MIN_ENEMY_FIRE_INTERVAL, number);
 }
 
 function clamp(value, minimum, maximum) {
@@ -43,10 +74,10 @@ function aliveAliens(game) {
 
 function rectangle(entity) {
   return {
-    x: finiteNumber(entity.x, 0),
-    y: finiteNumber(entity.y, 0),
-    width: nonNegative(entity.width, 1) || 1,
-    height: nonNegative(entity.height, 1) || 1,
+    x: finiteNumber(entity?.x, 0),
+    y: finiteNumber(entity?.y, 0),
+    width: nonNegative(entity?.width, 1) || 1,
+    height: nonNegative(entity?.height, 1) || 1,
   };
 }
 
@@ -59,20 +90,58 @@ function overlaps(first, second) {
   );
 }
 
-// The union of a shot's old and new rectangles prevents fast shots from
-// skipping a target between fixed updates.
-function sweptOverlaps(previous, current, target) {
-  const path = {
-    x: Math.min(previous.x, current.x),
-    y: Math.min(previous.y, current.y),
-    width: Math.max(previous.x + previous.width, current.x + current.width) - Math.min(previous.x, current.x),
-    height: Math.max(previous.y + previous.height, current.y + current.height) - Math.min(previous.y, current.y),
-  };
-  return overlaps(path, target);
+/**
+ * Return the first normalized time at which two moving rectangles overlap.
+ * The relative-motion slab test follows the actual segment, unlike the union
+ * of endpoint rectangles which can report a collision around a diagonal path.
+ */
+function sweptAabbTime(previousShot, currentShot, previousTarget, currentTarget) {
+  const shotBefore = rectangle(previousShot);
+  const shotAfter = rectangle(currentShot);
+  const targetBefore = rectangle(previousTarget);
+  const targetAfter = rectangle(currentTarget);
+
+  if (overlaps(shotBefore, targetBefore)) return 0;
+
+  const shotWidth = Math.max(shotBefore.width, shotAfter.width);
+  const shotHeight = Math.max(shotBefore.height, shotAfter.height);
+  const targetWidth = Math.max(targetBefore.width, targetAfter.width);
+  const targetHeight = Math.max(targetBefore.height, targetAfter.height);
+  const relativeStartX = shotBefore.x - targetBefore.x;
+  const relativeStartY = shotBefore.y - targetBefore.y;
+  const relativeDeltaX = (
+    (shotAfter.x - shotBefore.x)
+    - (targetAfter.x - targetBefore.x)
+  );
+  const relativeDeltaY = (
+    (shotAfter.y - shotBefore.y)
+    - (targetAfter.y - targetBefore.y)
+  );
+  let entry = 0;
+  let exit = 1;
+
+  for (const [origin, delta, minimum, maximum] of [
+    [relativeStartX, relativeDeltaX, -shotWidth, targetWidth],
+    [relativeStartY, relativeDeltaY, -shotHeight, targetHeight],
+  ]) {
+    if (Math.abs(delta) <= EPSILON) {
+      if (origin < minimum - EPSILON || origin > maximum + EPSILON) return null;
+      continue;
+    }
+
+    const first = (minimum - origin) / delta;
+    const second = (maximum - origin) / delta;
+    entry = Math.max(entry, Math.min(first, second));
+    exit = Math.min(exit, Math.max(first, second));
+    if (entry > exit + EPSILON) return null;
+  }
+
+  if (exit < -EPSILON || entry > 1 + EPSILON) return null;
+  return clamp(entry, 0, 1);
 }
 
 function directionValue(input) {
-  if (typeof input === "number") return Math.sign(input);
+  if (typeof input === "number") return Number.isFinite(input) ? Math.sign(input) : 0;
   if (typeof input === "string") {
     if (["left", "west", "a", "-1"].includes(input.toLowerCase())) return -1;
     if (["right", "east", "d", "1"].includes(input.toLowerCase())) return 1;
@@ -86,18 +155,20 @@ function directionValue(input) {
 }
 
 function stepInput(deltaOrInput, maybeInput) {
+  if (Array.isArray(deltaOrInput)) {
+    return { deltaSeconds: DEFAULT_FIXED_STEP, input: { enemyFire: deltaOrInput } };
+  }
   if (deltaOrInput && typeof deltaOrInput === "object") {
     return {
-      deltaSeconds: nonNegative(
+      deltaSeconds: elapsedValue(
         deltaOrInput.deltaSeconds ?? deltaOrInput.dt ?? deltaOrInput.delta,
-        1 / 60,
       ),
       input: deltaOrInput,
     };
   }
 
-  const deltaSeconds = nonNegative(deltaOrInput, 1 / 60);
-  if (maybeInput && typeof maybeInput === "object") {
+  const deltaSeconds = elapsedValue(deltaOrInput);
+  if (maybeInput && typeof maybeInput === "object" && !Array.isArray(maybeInput)) {
     return { deltaSeconds, input: maybeInput };
   }
   if (typeof maybeInput === "boolean" || Array.isArray(maybeInput)) {
@@ -108,7 +179,9 @@ function stepInput(deltaOrInput, maybeInput) {
 
 function randomValue(game) {
   const value = finiteNumber(game.rng(), 0.5);
-  return clamp(value, 0, 1);
+  // Math.random() is [0, 1), but injected replay sources can return 1.
+  // Keep that endpoint usable for the final candidate in a selection.
+  return clamp(value, 0, 1 - Number.EPSILON);
 }
 
 function endGame(game, status) {
@@ -127,7 +200,8 @@ function chooseEnemyAlien(game) {
   // make the choice deterministic when a caller wants to replay a game.
   const lowestY = Math.max(...candidates.map((alien) => alien.y));
   const lowest = candidates.filter((alien) => alien.y === lowestY);
-  return lowest[Math.floor(randomValue(game) * lowest.length)];
+  const index = Math.min(lowest.length - 1, Math.floor(randomValue(game) * lowest.length));
+  return lowest[index];
 }
 
 function makeEnemyShot(game, specification = true) {
@@ -173,13 +247,25 @@ function addEnemyFire(game, specification) {
   if (shot) game.enemyShots.push(shot);
 }
 
-function randomEnemyFire(game, deltaSeconds) {
-  if (!game.enemyFireEnabled || game.enemyFireInterval <= 0) return;
-  game.enemyFireTimer += deltaSeconds;
-  while (game.enemyFireTimer >= game.enemyFireInterval) {
-    game.enemyFireTimer -= game.enemyFireInterval;
+function randomEnemyFire(game, deltaSeconds, budget) {
+  if (!game.enemyFireEnabled || game.enemyFireInterval <= 0 || deltaSeconds <= 0) return;
+  const interval = game.enemyFireInterval;
+  const timer = nonNegative(game.enemyFireTimer, 0) + deltaSeconds;
+  const due = Math.floor((timer + EPSILON) / interval);
+  if (due <= 0) {
+    game.enemyFireTimer = timer;
+    return;
+  }
+
+  // Consume the whole elapsed interval, even when the safety budget is hit, so
+  // a long tab suspension cannot leave an unbounded backlog for later frames.
+  game.enemyFireTimer = Math.max(0, timer - due * interval);
+  const available = budget?.remaining ?? MAX_AUTOMATIC_ENEMY_FIRE_EVENTS;
+  const events = Math.min(due, available);
+  for (let index = 0; index < events; index += 1) {
     if (randomValue(game) < game.enemyFireChance) addEnemyFire(game, true);
   }
+  if (budget) budget.remaining -= events;
 }
 
 function moveFormation(game, deltaSeconds) {
@@ -189,8 +275,8 @@ function moveFormation(game, deltaSeconds) {
   const intendedDelta = game.formation.direction * game.formation.speed * deltaSeconds;
   const nextLeft = Math.min(...living.map((alien) => alien.x + intendedDelta));
   const nextRight = Math.max(...living.map((alien) => alien.x + intendedDelta + alien.width));
-  const hitLeft = nextLeft < game.formation.edgePadding;
-  const hitRight = nextRight > game.width - game.formation.edgePadding;
+  const hitLeft = nextLeft <= game.formation.edgePadding;
+  const hitRight = nextRight >= game.width - game.formation.edgePadding;
 
   let actualDelta = intendedDelta;
   if (hitLeft || hitRight) {
@@ -202,30 +288,62 @@ function moveFormation(game, deltaSeconds) {
     if (hitRight) actualDelta += game.width - game.formation.edgePadding - nextRight;
   }
 
-  for (const alien of living) alien.x += actualDelta;
-  game.formation.x += actualDelta;
+  for (const alien of living) alien.x = finiteNumber(alien.x + actualDelta, alien.x);
+  game.formation.x = finiteNumber(game.formation.x + actualDelta, game.formation.x);
 }
 
 function moveShots(game, deltaSeconds) {
   for (const shot of game.playerShots) {
-    shot.previous = rectangle(shot);
-    shot.x += finiteNumber(shot.vx, 0) * deltaSeconds;
-    shot.y += finiteNumber(shot.vy, 0) * deltaSeconds;
+    const previous = rectangle(shot);
+    shot.x = finiteNumber(previous.x + finiteNumber(shot.vx, 0) * deltaSeconds, previous.x);
+    shot.y = finiteNumber(previous.y + finiteNumber(shot.vy, 0) * deltaSeconds, previous.y);
+    shot.previous = previous;
   }
   for (const shot of game.enemyShots) {
-    shot.previous = rectangle(shot);
-    shot.x += finiteNumber(shot.vx, 0) * deltaSeconds;
-    shot.y += finiteNumber(shot.vy, 0) * deltaSeconds;
+    const previous = rectangle(shot);
+    shot.x = finiteNumber(previous.x + finiteNumber(shot.vx, 0) * deltaSeconds, previous.x);
+    shot.y = finiteNumber(previous.y + finiteNumber(shot.vy, 0) * deltaSeconds, previous.y);
+    shot.previous = previous;
   }
 }
 
-function resolvePlayerShots(game) {
+function shotDistanceAlongPath(previousShot, currentShot, target) {
+  const dx = currentShot.x - previousShot.x;
+  const dy = currentShot.y - previousShot.y;
+  const length = Math.hypot(dx, dy);
+  const shotCenterX = previousShot.x + previousShot.width / 2;
+  const shotCenterY = previousShot.y + previousShot.height / 2;
+  const targetCenterX = target.x + target.width / 2;
+  const targetCenterY = target.y + target.height / 2;
+  if (length <= EPSILON) return Math.hypot(targetCenterX - shotCenterX, targetCenterY - shotCenterY);
+  return ((targetCenterX - shotCenterX) * dx + (targetCenterY - shotCenterY) * dy) / length;
+}
+
+function resolvePlayerShots(game, previousAliens) {
   for (let shotIndex = game.playerShots.length - 1; shotIndex >= 0; shotIndex -= 1) {
     const shot = game.playerShots[shotIndex];
     const previous = shot.previous ?? rectangle(shot);
-    const target = aliveAliens(game).find((alien) => (
-      sweptOverlaps(previous, rectangle(shot), rectangle(alien))
-    ));
+    const current = rectangle(shot);
+    let target = null;
+    let targetTime = Infinity;
+    let targetDistance = Infinity;
+
+    for (let alienIndex = 0; alienIndex < game.aliens.length; alienIndex += 1) {
+      const alien = game.aliens[alienIndex];
+      if (!alien.alive) continue;
+      const previousAlien = previousAliens?.[alienIndex] ?? rectangle(alien);
+      const collisionTime = sweptAabbTime(previous, current, previousAlien, rectangle(alien));
+      if (collisionTime === null) continue;
+      const distance = shotDistanceAlongPath(previous, current, previousAlien);
+      if (
+        collisionTime < targetTime - EPSILON
+        || (Math.abs(collisionTime - targetTime) <= EPSILON && distance < targetDistance)
+      ) {
+        target = alien;
+        targetTime = collisionTime;
+        targetDistance = distance;
+      }
+    }
 
     if (target) {
       target.alive = false;
@@ -235,37 +353,91 @@ function resolvePlayerShots(game) {
       continue;
     }
 
-    if (shot.y + shot.height < 0 || shot.y > game.height || shot.x + shot.width < 0 || shot.x > game.width) {
+    if (current.y + current.height < 0 || current.y > game.height || current.x + current.width < 0 || current.x > game.width) {
       game.playerShots.splice(shotIndex, 1);
     }
   }
 }
 
-function resolveEnemyShots(game) {
+function resetCannonMotion(game) {
+  game.cannon.previousX = game.cannon.x;
+  game.cannon.previousY = game.cannon.y;
+  game.cannon.motionStartX = game.cannon.x;
+  game.cannon.motionStartY = game.cannon.y;
+  game.cannon.motionPending = false;
+}
+
+function resolveEnemyShots(game, previousCannon, currentCannon) {
   for (let shotIndex = game.enemyShots.length - 1; shotIndex >= 0; shotIndex -= 1) {
     const shot = game.enemyShots[shotIndex];
     const previous = shot.previous ?? rectangle(shot);
-    if (sweptOverlaps(previous, rectangle(shot), rectangle(game.cannon))) {
+    if (sweptAabbTime(previous, rectangle(shot), previousCannon, currentCannon) !== null) {
       game.enemyShots.splice(shotIndex, 1);
       game.lives = Math.max(0, game.lives - 1);
       if (game.lives === 0) {
         endGame(game, "lost");
       } else {
         game.cannon.x = game.initialCannonX;
+        game.cannon.y = game.initialCannonY;
         game.playerShots.length = 0;
         game.enemyShots.length = 0;
+        resetCannonMotion(game);
       }
-      return;
+      return true;
     }
 
-    if (shot.y > game.height || shot.x + shot.width < 0 || shot.x > game.width) {
+    const current = rectangle(shot);
+    if (current.y > game.height || current.x + current.width < 0 || current.x > game.width) {
       game.enemyShots.splice(shotIndex, 1);
     }
   }
+  return false;
 }
 
 function formationReachedCannon(game) {
   return aliveAliens(game).some((alien) => alien.y + alien.height >= game.cannon.y);
+}
+
+function interpolateRectangle(start, end, progress) {
+  const ratio = clamp(progress, 0, 1);
+  return {
+    x: start.x + (end.x - start.x) * ratio,
+    y: start.y + (end.y - start.y) * ratio,
+    width: end.width,
+    height: end.height,
+  };
+}
+
+function cannonMotion(game) {
+  const current = rectangle(game.cannon);
+  const start = game.cannon.motionPending
+    ? {
+      x: finiteNumber(game.cannon.motionStartX, current.x),
+      y: finiteNumber(game.cannon.motionStartY, current.y),
+      width: current.width,
+      height: current.height,
+    }
+    : {
+      x: finiteNumber(game.cannon.previousX, current.x),
+      y: finiteNumber(game.cannon.previousY, current.y),
+      width: current.width,
+      height: current.height,
+    };
+  return { start, end: current };
+}
+
+function simulateFixedStep(game, deltaSeconds, previousCannon, currentCannon) {
+  const previousAliens = game.aliens.map((alien) => rectangle(alien));
+  moveFormation(game, deltaSeconds);
+  moveShots(game, deltaSeconds);
+  resolvePlayerShots(game, previousAliens);
+  if (game.finished) return false;
+  if (resolveEnemyShots(game, previousCannon, currentCannon)) return false;
+  if (formationReachedCannon(game)) {
+    endGame(game, "lost");
+    return false;
+  }
+  return true;
 }
 
 export function createAlienBlaster(options = {}) {
@@ -298,6 +470,10 @@ export function createAlienBlaster(options = {}) {
     0,
     Math.max(0, height - cannonHeight),
   );
+  const fixedStep = Math.max(
+    MIN_FIXED_STEP,
+    positiveNumber(options.fixedStep, DEFAULT_FIXED_STEP),
+  );
 
   const aliens = [];
   for (let row = 0; row < rows; row += 1) {
@@ -318,12 +494,21 @@ export function createAlienBlaster(options = {}) {
   const game = {
     width,
     height,
+    fixedStep,
+    accumulator: 0,
+    maxElapsedSeconds: MAX_ELAPSED_SECONDS,
+    maxSubstepsPerCall: MAX_FIXED_STEPS_PER_CALL,
     cannon: {
       x: cannonX,
       y: cannonY,
       width: cannonWidth,
       height: cannonHeight,
       speed: nonNegative(options.cannonSpeed ?? cannonOptions.speed, DEFAULT_CANNON_SPEED),
+      previousX: cannonX,
+      previousY: cannonY,
+      motionStartX: cannonX,
+      motionStartY: cannonY,
+      motionPending: false,
     },
     aliens,
     playerShots: [],
@@ -344,6 +529,7 @@ export function createAlienBlaster(options = {}) {
     won: false,
     lost: false,
     initialCannonX: cannonX,
+    initialCannonY: cannonY,
     playerShotSpeed: nonNegative(options.playerShotSpeed, DEFAULT_PLAYER_SHOT_SPEED),
     enemyShotSpeed: nonNegative(options.enemyShotSpeed, DEFAULT_ENEMY_SHOT_SPEED),
     playerShotWidth: nonNegative(options.playerShotWidth, 3) || 3,
@@ -351,7 +537,7 @@ export function createAlienBlaster(options = {}) {
     alienPoints: finiteNumber(options.alienPoints, DEFAULT_ALIEN_POINTS),
     rng: typeof options.rng === "function" ? options.rng : Math.random,
     enemyFireEnabled: options.enemyFireEnabled ?? true,
-    enemyFireInterval: nonNegative(options.enemyFireInterval, DEFAULT_ENEMY_SHOT_INTERVAL),
+    enemyFireInterval: enemyFireIntervalValue(options.enemyFireInterval),
     enemyFireChance: clamp(nonNegative(options.enemyFireChance, DEFAULT_ENEMY_FIRE_CHANCE), 0, 1),
     enemyFireTimer: 0,
   };
@@ -360,18 +546,24 @@ export function createAlienBlaster(options = {}) {
   return game;
 }
 
-export function moveAlienBlaster(game, input, deltaSeconds = 1 / 60) {
+export function moveAlienBlaster(game, input, deltaSeconds = DEFAULT_FIXED_STEP) {
   if (!game || game.finished) return game;
-  let direction = directionValue(input);
+  const direction = directionValue(input);
   let delta = deltaSeconds;
-  if (input && typeof input === "object") {
+  if (input && typeof input === "object" && !Array.isArray(input)) {
     delta = input.deltaSeconds ?? input.dt ?? deltaSeconds;
   }
-  delta = nonNegative(delta, 1 / 60);
+  delta = elapsedValue(delta, 0);
   if (direction === 0 || delta === 0) return game;
 
+  if (!game.cannon.motionPending) {
+    game.cannon.motionStartX = finiteNumber(game.cannon.x, game.initialCannonX);
+    game.cannon.motionStartY = finiteNumber(game.cannon.y, game.initialCannonY);
+    game.cannon.motionPending = true;
+  }
+  const currentX = finiteNumber(game.cannon.x, game.initialCannonX);
   game.cannon.x = clamp(
-    game.cannon.x + direction * game.cannon.speed * delta,
+    finiteNumber(currentX + direction * game.cannon.speed * delta, currentX),
     0,
     Math.max(0, game.width - game.cannon.width),
   );
@@ -393,20 +585,70 @@ export function fireAlienBlaster(game) {
   return game;
 }
 
-export function stepAlienBlaster(game, deltaOrInput = 1 / 60, maybeInput) {
+export function stepAlienBlaster(game, deltaOrInput = DEFAULT_FIXED_STEP, maybeInput) {
   if (!game || game.finished) return game;
-  const { deltaSeconds, input } = stepInput(deltaOrInput, maybeInput);
+  const { deltaSeconds: requestedDelta, input } = stepInput(deltaOrInput, maybeInput);
+  const fixedStep = Math.max(
+    MIN_FIXED_STEP,
+    positiveNumber(game.fixedStep, DEFAULT_FIXED_STEP),
+  );
+  game.fixedStep = fixedStep;
+  const deltaSeconds = Math.min(
+    requestedDelta,
+    finiteNumber(game.maxElapsedSeconds, MAX_ELAPSED_SECONDS),
+  );
   const hasExplicitEnemyFire = Object.prototype.hasOwnProperty.call(input, "enemyFire");
-
   if (hasExplicitEnemyFire) addEnemyFire(game, input.enemyFire);
-  else randomEnemyFire(game, deltaSeconds);
+  else randomEnemyFire(game, deltaSeconds, { remaining: MAX_AUTOMATIC_ENEMY_FIRE_EVENTS });
 
-  moveFormation(game, deltaSeconds);
-  moveShots(game, deltaSeconds);
-  resolvePlayerShots(game);
-  if (game.finished) return game;
-  resolveEnemyShots(game);
-  if (game.finished) return game;
-  if (formationReachedCannon(game)) endGame(game, "lost");
+  game.accumulator = nonNegative(game.accumulator, 0) + deltaSeconds;
+  const motion = cannonMotion(game);
+  const plannedSteps = Math.min(
+    MAX_FIXED_STEPS_PER_CALL,
+    Math.floor((game.accumulator + EPSILON) / fixedStep),
+  );
+  const motionDuration = Math.max(DEFAULT_FIXED_STEP, plannedSteps * fixedStep);
+  let steps = 0;
+
+  while (
+    steps < plannedSteps
+    && game.accumulator + EPSILON >= game.fixedStep
+    && !game.finished
+  ) {
+    const previousCannon = interpolateRectangle(
+      motion.start,
+      motion.end,
+      (steps * fixedStep) / motionDuration,
+    );
+    const currentCannon = interpolateRectangle(
+      motion.start,
+      motion.end,
+      ((steps + 1) * fixedStep) / motionDuration,
+    );
+    game.accumulator -= fixedStep;
+    if (Math.abs(game.accumulator) < EPSILON) game.accumulator = 0;
+    if (!simulateFixedStep(game, fixedStep, previousCannon, currentCannon)) break;
+    steps += 1;
+  }
+
+  if (steps === 0 && !game.finished) {
+    const previousAliens = game.aliens.map((alien) => rectangle(alien));
+    resolvePlayerShots(game, previousAliens);
+    if (!game.finished && resolveEnemyShots(game, motion.start, motion.end)) {
+      game.accumulator = 0;
+    }
+    if (!game.finished && formationReachedCannon(game)) endGame(game, "lost");
+  }
+
+  if (
+    !Number.isFinite(game.accumulator)
+    || (game.accumulator >= fixedStep - EPSILON
+      && (steps >= MAX_FIXED_STEPS_PER_CALL || game.finished))
+  ) {
+    // This is another guard for custom state/configuration: never carry an
+    // unbounded backlog into the next browser callback.
+    game.accumulator = 0;
+  }
+  resetCannonMotion(game);
   return game;
 }
