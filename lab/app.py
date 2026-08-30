@@ -28,6 +28,20 @@ def home(request: Request):
     )
 
 
+@app.get("/games/arcade")
+def arcade_redirect():
+    return RedirectResponse(url="/games/arcade/", status_code=307)
+
+
+@app.get("/games/arcade/", response_class=HTMLResponse)
+def arcade(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "arcade.html",
+        {"app_name": APP_NAME},
+    )
+
+
 @app.get("/games/lighthouse")
 def lighthouse_redirect():
     return RedirectResponse(url="/games/lighthouse/", status_code=307)

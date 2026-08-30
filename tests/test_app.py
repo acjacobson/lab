@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -21,6 +22,63 @@ def test_homepage_is_lab_index():
     assert 'href="/games/lighthouse/"' in response.text
     assert "The Last Lighthouse Keeper" in response.text
     assert 'href="/static/lab.css"' in response.text
+
+
+def test_homepage_includes_arcade_project_card():
+    response = client.get("/")
+    assert response.status_code == 200
+    assert 'href="/games/arcade/"' in response.text
+    assert "Classic Arcade" in response.text
+    assert "Four timeless games in one cabinet" in response.text
+
+
+def test_arcade_route_renders_a_vintage_cabinet_and_four_game_selector_options():
+    response = client.get("/games/arcade/")
+    assert response.status_code == 200
+    html = response.text
+
+    assert '<main class="arcade-cabinet">' in html
+    assert '<header class="arcade-marquee"' in html
+    assert '<section class="arcade-bezel"' in html
+    assert '<canvas id="game-canvas"' in html
+    assert '<section id="game-selector"' in html
+
+    choices = re.findall(r'<button[^>]+class="game-choice"[^>]*>', html)
+    assert len(choices) == 4
+    for title in ("Block Drop", "Brick Breaker", "Alien Blaster", "Maze Muncher"):
+        assert title in html
+
+    assert '<link rel="stylesheet" href="/static/games/arcade/styles.css">' in html
+    assert '<script type="module" src="/static/games/arcade/game.js"></script>' in html
+
+
+def test_arcade_route_has_accessible_control_panel_actions_and_responsive_styles():
+    response = client.get("/games/arcade/")
+    assert response.status_code == 200
+    html = response.text
+
+    assert '<section class="control-panel" aria-label="Arcade controls">' in html
+    assert 'class="joystick"' in html
+    assert 'aria-label="Directional controls"' in html
+    assert 'id="primary-action"' in html
+    assert 'id="restart-game"' in html
+    assert 'id="selector-home"' in html
+    assert 'id="sound-toggle"' in html
+
+    stylesheet = client.get("/static/games/arcade/styles.css")
+    assert stylesheet.status_code == 200
+    assert ".arcade-cabinet" in stylesheet.text
+    assert ".arcade-marquee" in stylesheet.text
+    assert ".arcade-bezel" in stylesheet.text
+    assert ".control-panel" in stylesheet.text
+    assert "min-height: 44px" in stylesheet.text
+    assert "@media (max-width: 700px)" in stylesheet.text
+
+
+def test_arcade_route_without_trailing_slash_redirects():
+    response = client.get("/games/arcade", follow_redirects=False)
+    assert response.status_code in (307, 308)
+    assert response.headers["location"] == "/games/arcade/"
 
 
 def test_lighthouse_game_has_dedicated_route_and_assets():

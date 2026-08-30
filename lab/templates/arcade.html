@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#18131c">
+  <title>Classic Arcade · Stray Lantern Lab</title>
+  <link rel="stylesheet" href="/static/games/arcade/styles.css">
+</head>
+<body class="arcade-page">
+  <a class="lab-back" href="/">← Lab</a>
+
+  <main class="arcade-cabinet">
+    <header class="arcade-marquee" aria-label="Classic Arcade marquee">
+      <span class="marquee-light marquee-light-left" aria-hidden="true"></span>
+      <div class="marquee-copy">
+        <p class="marquee-kicker">Stray Lantern Lab</p>
+        <h1>Classic <span>Arcade</span></h1>
+        <p class="marquee-instruction">One cabinet · four games</p>
+      </div>
+      <span class="marquee-light marquee-light-right" aria-hidden="true"></span>
+    </header>
+
+    <section class="arcade-bezel" aria-label="Arcade screen">
+      <div class="screen-surround">
+        <div class="screen-inset">
+          <canvas id="game-canvas" width="480" height="360" aria-label="Arcade game screen"></canvas>
+          <div class="screen-scanlines" aria-hidden="true"></div>
+
+          <section id="game-selector" class="game-selector" aria-labelledby="selector-title">
+            <div class="selector-frame">
+              <p class="selector-kicker">Select a game</p>
+              <h2 id="selector-title">Choose your challenge</h2>
+              <div class="game-choice-list" role="list">
+                <button class="game-choice" type="button" data-game="block-drop" aria-pressed="true">
+                  <span class="choice-number" aria-hidden="true">01</span>
+                  <span class="choice-copy">
+                    <strong>Block Drop</strong>
+                    <small>Stack the skyline</small>
+                  </span>
+                  <span class="choice-arrow" aria-hidden="true">›</span>
+                </button>
+                <button class="game-choice" type="button" data-game="brick-breaker" aria-pressed="false">
+                  <span class="choice-number" aria-hidden="true">02</span>
+                  <span class="choice-copy">
+                    <strong>Brick Breaker</strong>
+                    <small>Clear every wall</small>
+                  </span>
+                  <span class="choice-arrow" aria-hidden="true">›</span>
+                </button>
+                <button class="game-choice" type="button" data-game="alien-blaster" aria-pressed="false">
+                  <span class="choice-number" aria-hidden="true">03</span>
+                  <span class="choice-copy">
+                    <strong>Alien Blaster</strong>
+                    <small>Defend the stars</small>
+                  </span>
+                  <span class="choice-arrow" aria-hidden="true">›</span>
+                </button>
+                <button class="game-choice" type="button" data-game="maze-muncher" aria-pressed="false">
+                  <span class="choice-number" aria-hidden="true">04</span>
+                  <span class="choice-copy">
+                    <strong>Maze Muncher</strong>
+                    <small>Find every pellet</small>
+                  </span>
+                  <span class="choice-arrow" aria-hidden="true">›</span>
+                </button>
+              </div>
+              <p id="screen-message" class="screen-message">Press start to play</p>
+            </div>
+          </section>
+        </div>
+      </div>
+      <div class="bezel-lights" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </section>
+
+    <section class="control-panel" aria-label="Arcade controls">
+      <div class="control-panel-header">
+        <span>PLAYER 1</span>
+        <span id="credit-display">READY</span>
+        <span>HIGH SCORE <b id="high-score">000000</b></span>
+      </div>
+
+      <div class="control-panel-controls">
+        <div class="joystick-cluster">
+          <div class="joystick" role="img" aria-label="Joystick">
+            <span class="joystick-ball" aria-hidden="true"></span>
+            <span class="joystick-stick" aria-hidden="true"></span>
+            <span class="joystick-base" aria-hidden="true"></span>
+          </div>
+          <span class="control-caption">MOVE</span>
+        </div>
+
+        <div class="directional-controls" role="group" aria-label="Directional controls">
+          <button class="direction-control direction-up" type="button" data-direction="up" aria-label="Move up">▲</button>
+          <button class="direction-control direction-left" type="button" data-direction="left" aria-label="Move left">◀</button>
+          <button class="direction-control direction-right" type="button" data-direction="right" aria-label="Move right">▶</button>
+          <button class="direction-control direction-down" type="button" data-direction="down" aria-label="Move down">▼</button>
+        </div>
+
+        <div class="action-controls" role="group" aria-label="Game actions">
+          <button id="primary-action" class="arcade-button arcade-button-primary" type="button" aria-label="Start selected game">Start</button>
+          <button id="restart-game" class="arcade-button" type="button">Restart</button>
+        </div>
+
+        <div class="utility-controls" role="group" aria-label="Arcade utilities">
+          <button id="selector-home" class="arcade-button" type="button" aria-controls="game-selector" aria-label="Return to game selector">Select / Home</button>
+          <button id="sound-toggle" class="arcade-button" type="button" aria-pressed="false" aria-label="Mute sound">Sound: On</button>
+        </div>
+      </div>
+
+      <div class="speaker-grille" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </section>
+
+    <footer class="cabinet-footer">
+      <span>STRAY LANTERN</span>
+      <span>INSERT COIN · PRESS START</span>
+    </footer>
+  </main>
+
+  <script type="module" src="/static/games/arcade/game.js"></script>
+</body>
+</html>
