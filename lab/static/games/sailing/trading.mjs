@@ -20,7 +20,9 @@ export const ITEM_CATALOG = freezeDeep({
   spices: { id: "spices", name: "Spices" },
 });
 
-const rawPorts = [
+export const WORLD_SCALE = 2;
+
+const basePorts = [
   {
     id: "dawnwatch",
     name: "Dawnwatch Quay",
@@ -94,6 +96,24 @@ const rawPorts = [
     },
   },
 ];
+
+const rawPorts = basePorts.map((port) => ({
+  ...port,
+  berth: {
+    x: port.berth.x * WORLD_SCALE,
+    y: port.berth.y * WORLD_SCALE,
+  },
+  settlement: {
+    x: port.settlement.x * WORLD_SCALE,
+    y: port.settlement.y * WORLD_SCALE,
+  },
+  dock: {
+    x1: port.dock.x1 * WORLD_SCALE,
+    y1: port.dock.y1 * WORLD_SCALE,
+    x2: port.dock.x2 * WORLD_SCALE,
+    y2: port.dock.y2 * WORLD_SCALE,
+  },
+}));
 
 const immutablePorts = rawPorts.map((port) => ({
   ...port,

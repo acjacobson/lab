@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  DEFAULT_MAP,
   createGame,
   isWaterAt,
   stepGame,
@@ -28,6 +29,19 @@ test("the ship starts on navigable water", () => {
   const game = createGame({ map: TEST_MAP, start: { x: 24, y: 24 } });
 
   assert.equal(isWaterAt(game.world, game.ship.x, game.ship.y), true);
+});
+
+test("the sailing world is twice as wide and tall as the original map", () => {
+  assert.equal(DEFAULT_MAP[0].length, 128);
+  assert.equal(DEFAULT_MAP.length, 80);
+});
+
+test("ports are spread across the enlarged world", () => {
+  const xs = PORTS.map((port) => port.berth.x);
+  const ys = PORTS.map((port) => port.berth.y);
+
+  assert.ok(Math.max(...xs) - Math.min(...xs) >= 700);
+  assert.ok(Math.max(...ys) - Math.min(...ys) >= 700);
 });
 
 test("the opening camera includes enough land to read as an island world", () => {
