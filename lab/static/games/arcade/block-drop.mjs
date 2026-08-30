@@ -208,7 +208,15 @@ export function rotateBlockDrop(game, direction = 1) {
 
   const shape = rotatedShape(state.active.shape, turn);
   const offsets = [0, -1, 1, -2, 2];
-  for (const yOffset of [0, -1, 1]) {
+  const yOffsets = [0, -1, 1];
+  if (state.active.type === "I") {
+    const boundaryX = state.width - shape[0].length - state.active.x;
+    const boundaryY = state.height - shape.length - state.active.y;
+    if (boundaryX < 0) offsets.push(boundaryX);
+    if (boundaryY < 0) yOffsets.push(boundaryY);
+  }
+
+  for (const yOffset of yOffsets) {
     const targetY = state.active.y + yOffset;
     if (targetY < 0) continue;
     for (const xOffset of offsets) {

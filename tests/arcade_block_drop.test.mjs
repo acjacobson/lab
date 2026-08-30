@@ -102,6 +102,39 @@ test("rotation changes the active piece while keeping it in bounds", () => {
   assert.ok(state.active.y + state.active.shape.length <= state.height);
 });
 
+test("a vertical I at the right wall rotates horizontal with a three-cell kick", () => {
+  const game = createBlockDrop({ width: 10, height: 20, sequence: ["I"] });
+  const state = game.state;
+
+  rotateBlockDrop(game);
+  for (let index = 0; index < 6; index += 1) moveBlockDrop(game, 1);
+  assert.equal(state.active.x, 9);
+  assert.equal(state.active.shape.length, 4);
+
+  rotateBlockDrop(game);
+
+  assert.equal(state.active.rotation, 2);
+  assert.deepEqual(state.active.shape, [[1, 1, 1, 1]]);
+  assert.equal(state.active.x, 6);
+  assert.equal(state.active.y, 0);
+});
+
+test("a horizontal I on the floor rotates vertical with a three-cell kick", () => {
+  const game = createBlockDrop({ width: 10, height: 20, sequence: ["I"] });
+  const state = game.state;
+
+  for (let index = 0; index < 19; index += 1) stepBlockDrop(game);
+  assert.equal(state.active.y, 19);
+  assert.equal(state.active.shape.length, 1);
+
+  rotateBlockDrop(game);
+
+  assert.equal(state.active.rotation, 1);
+  assert.deepEqual(state.active.shape, [[1], [1], [1], [1]]);
+  assert.equal(state.active.x, 3);
+  assert.equal(state.active.y, 16);
+});
+
 test("gravity moves a piece down and locks it before spawning the next piece", () => {
   const game = createBlockDrop({ width: 5, height: 4, sequence: ["I", "O"] });
   const state = game.state;
@@ -112,7 +145,7 @@ test("gravity moves a piece down and locks it before spawning the next piece", (
   assert.equal(state.active.type, "I");
   assert.equal(state.active.y, 3);
 
-  stepBlockDrop(game, 10);
+  stepBlockDrop(game);
 
   assert.equal(state.active.type, "O");
   assert.equal(state.active.y, 0);
