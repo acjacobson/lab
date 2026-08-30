@@ -264,6 +264,10 @@ a:focus-visible {
   background: linear-gradient(180deg, rgb(3 19 23 / 80%), rgb(5 13 20 / 93%));
 }
 
+.game-selector[hidden] {
+  display: none;
+}
+
 .selector-frame {
   width: min(100%, 700px);
   margin: auto;
@@ -369,13 +373,28 @@ a:focus-visible {
 }
 
 .screen-message {
+  position: absolute;
+  z-index: 4;
+  right: clamp(8px, 3%, 24px);
+  bottom: clamp(8px, 3%, 18px);
+  left: clamp(8px, 3%, 24px);
   min-height: 1em;
-  margin: 16px 0 0;
+  margin: 0;
+  overflow: hidden;
+  padding: 4px 8px;
+  border: 1px solid rgb(91 212 207 / 28%);
+  border-radius: 2px;
   color: var(--marquee-hot);
   font-size: clamp(0.57rem, 1.5vw, 0.68rem);
   letter-spacing: 0.14em;
+  line-height: 1.35;
+  text-overflow: ellipsis;
   text-align: center;
   text-transform: uppercase;
+  white-space: nowrap;
+  background: rgb(5 25 29 / 86%);
+  text-shadow: 0 1px 0 #07171a;
+  pointer-events: none;
 }
 
 .bezel-lights {
@@ -688,7 +707,9 @@ a:focus-visible {
   }
 
   .screen-message {
-    margin-top: 10px;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
   }
 
   .control-panel {

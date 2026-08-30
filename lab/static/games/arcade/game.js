@@ -71,6 +71,12 @@ const KEY_TO_DIRECTION = Object.freeze({
   "s": "down",
   "a": "left",
 });
+const DIRECTION_TO_KEY = Object.freeze({
+  up: "ArrowUp",
+  right: "ArrowRight",
+  down: "ArrowDown",
+  left: "ArrowLeft",
+});
 const ACTION_KEYS = new Set(["Enter", " "]);
 const MAX_UI_DELTA = 0.25;
 const BLOCK_GRAVITY_SECONDS = 0.62;
@@ -118,7 +124,7 @@ let blockMoveTimer = 0;
 let mazeStepTimer = 0;
 let lastInputDirection = null;
 const heldDirections = new Set();
-const heldKeyboardDirections = new Set();
+const heldKeyboardKeys = new Set();
 const heldPointerDirections = new Map();
 let audioContext = null;
 
@@ -312,7 +318,7 @@ function stopLoop() {
 
 function clearHeldInput() {
   heldDirections.clear();
-  heldKeyboardDirections.clear();
+  heldKeyboardKeys.clear();
   heldPointerDirections.clear();
   lastInputDirection = null;
   blockMoveTimer = 0;
@@ -320,7 +326,10 @@ function clearHeldInput() {
 
 function refreshHeldDirections() {
   heldDirections.clear();
-  for (const direction of heldKeyboardDirections) heldDirections.add(direction);
+  for (const key of heldKeyboardKeys) {
+    const direction = directionForKey(key);
+    if (direction) heldDirections.add(direction);
+  }
   for (const direction of heldPointerDirections.values()) heldDirections.add(direction);
   if (lastInputDirection && !heldDirections.has(lastInputDirection)) {
     lastInputDirection = [...heldDirections].at(-1) ?? null;
@@ -328,11 +337,16 @@ function refreshHeldDirections() {
 }
 
 function directionForKey(key) {
-  if (KEY_TO_DIRECTION[key]) return KEY_TO_DIRECTION[key];
-  if (typeof key === "string" && KEY_TO_DIRECTION[key.toLowerCase()]) {
-    return KEY_TO_DIRECTION[key.toLowerCase()];
-  }
+  if (typeof key !== "string") return null;
+  if (Object.hasOwn(KEY_TO_DIRECTION, key)) return KEY_TO_DIRECTION[key];
+  const normalizedKey = key.toLowerCase();
+  if (Object.hasOwn(KEY_TO_DIRECTION, normalizedKey)) return KEY_TO_DIRECTION[normalizedKey];
   return null;
+}
+
+function keyboardKeyFor(key) {
+  if (typeof key !== "string") return key;
+  return key.length === 1 ? key.toLowerCase() : key;
 }
 
 function directionHeld(direction) {
@@ -348,6 +362,14 @@ function currentHorizontalDirection() {
   const direction = currentDirection();
   if (direction === "left" || direction === "right") return direction;
   return directionHeld("left") ? "left" : directionHeld("right") ? "right" : null;
+}
+
+function isNativeControlTarget(target) {
+  if (!target || target === canvas) return false;
+  if (target.isContentEditable) return true;
+  const tagName = typeof target.tagName === "string" ? target.tagName.toLowerCase() : "";
+  if (["button", "input", "select", "textarea", "a"].includes(tagName)) return true;
+  return Boolean(target.closest?.("button, input, select, textarea, a, [contenteditable]"));
 }
 
 function captureEventState(state) {
@@ -524,6 +546,7 @@ function triggerPrimary({ hardDrop = false } = {}) {
 }
 
 function handleKeyDown(event) {
+  if (isNativeControlTarget(event.target)) return;
   const direction = directionForKey(event.key);
   const normalizedKey = typeof event.key === "string" ? event.key.toLowerCase() : event.key;
 
@@ -534,7 +557,7 @@ function handleKeyDown(event) {
       if (!event.repeat) moveSelection(direction);
       return;
     }
-    heldKeyboardDirections.add(direction);
+    heldKeyboardKeys.add(keyboardKeyFor(event.key));
     lastInputDirection = direction;
     refreshHeldDirections();
     if (!event.repeat) performDirectionAction(direction);
@@ -571,10 +594,11 @@ function handleKeyDown(event) {
 }
 
 function handleKeyUp(event) {
+  if (isNativeControlTarget(event.target)) return;
   const direction = directionForKey(event.key);
   if (!direction) return;
   event.preventDefault();
-  heldKeyboardDirections.delete(direction);
+  heldKeyboardKeys.delete(keyboardKeyFor(event.key));
   refreshHeldDirections();
 }
 
@@ -1069,16 +1093,17 @@ function freezeDeep(value) {
 }
 
 function hookPressDirection(direction) {
-  if (!GAME_ORDER.includes(activeSlug) || !["up", "right", "down", "left"].includes(direction)) return;
+  if (!GAME_ORDER.includes(activeSlug) || !Object.hasOwn(DIRECTION_TO_KEY, direction)) return;
   handleUserGesture();
-  heldKeyboardDirections.add(direction);
+  heldKeyboardKeys.add(DIRECTION_TO_KEY[direction]);
   lastInputDirection = direction;
   refreshHeldDirections();
   performDirectionAction(direction);
 }
 
 function hookReleaseDirection(direction) {
-  heldKeyboardDirections.delete(direction);
+  if (!Object.hasOwn(DIRECTION_TO_KEY, direction)) return;
+  heldKeyboardKeys.delete(DIRECTION_TO_KEY[direction]);
   refreshHeldDirections();
 }
 

@@ -66,6 +66,20 @@ test("arcade HTML exposes one accessible four-game selector and shared controls"
   assert.match(fs.readFileSync(stylesheetPath, "utf8"), /touch-action:\s*manipulation/);
 });
 
+test("the hidden selector cannot override its hidden state", () => {
+  const stylesheet = fs.readFileSync(stylesheetPath, "utf8");
+  assert.match(stylesheet, /\.game-selector\[hidden\]\s*\{[^}]*display:\s*none\s*;/s);
+});
+
+test("active screen status stays outside the selector overlay", () => {
+  const html = readHtml();
+  const selectorStart = html.indexOf('<section id="game-selector"');
+  const selectorEnd = html.indexOf("</section>", selectorStart);
+  const statusPosition = html.indexOf('id="screen-message"');
+  assert.ok(selectorStart >= 0 && selectorEnd > selectorStart, "selector section must be present");
+  assert.ok(statusPosition < selectorStart || statusPosition > selectorEnd, "status must not be hidden with selector");
+});
+
 test("keyboard mapping covers selector navigation, game input, and utility shortcuts", () => {
   const source = readSource();
   for (const key of [
@@ -176,4 +190,5 @@ test("browser verification hook is frozen, read-only, and does not expose engine
 test("test script runs the arcade UI contract suite", () => {
   const script = fs.readFileSync(testScriptPath, "utf8");
   assert.match(script, /node --test tests\/arcade_ui\.test\.mjs/);
+  assert.match(script, /node --test tests\/arcade_runtime\.test\.mjs/);
 });
