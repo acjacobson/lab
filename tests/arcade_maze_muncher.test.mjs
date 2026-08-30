@@ -147,3 +147,62 @@ test("losing the last life ends the level and freezes the game", () => {
     { x: 1, y: 1 },
   );
 });
+
+test("prototype-key directions are rejected without breaking a later step", () => {
+  for (const invalidDirection of ["constructor", "__proto__"]) {
+    const game = createMazeMuncher({ enemyStarts: [], pellets: [] });
+
+    setMazeDirection(game, invalidDirection);
+
+    assert.equal(game.player.direction, "left");
+    assert.doesNotThrow(() => stepMazeMuncher(game));
+    assert.deepEqual(
+      { x: game.player.x, y: game.player.y },
+      { x: 1, y: 1 },
+    );
+  }
+});
+
+test("invalid setMazeDirection values leave the current direction unchanged", () => {
+  const game = createMazeMuncher({ enemyStarts: [], pellets: [] });
+  setMazeDirection(game, "right");
+
+  for (const invalidDirection of ["diagonal", "", " ", null, undefined, 42, {}]) {
+    setMazeDirection(game, invalidDirection);
+    assert.equal(game.player.direction, "right");
+  }
+});
+
+test("overlapping player and enemy spawns are rejected", () => {
+  assert.throws(
+    () => createMazeMuncher({
+      enemyStarts: [{ x: 1, y: 1 }],
+      enemyDirections: ["left"],
+    }),
+    /overlap.*player.*1,1/i,
+  );
+});
+
+test("duplicate enemy spawns are rejected", () => {
+  assert.throws(
+    () => createMazeMuncher({
+      enemyStarts: [{ x: 2, y: 1 }, { x: 2, y: 1 }],
+      enemyDirections: ["left", "left"],
+    }),
+    /duplicate.*enemy.*2,1/i,
+  );
+});
+
+test("normal stepping still works after invalid direction input", () => {
+  const game = createMazeMuncher({ enemyStarts: [], pellets: [{ x: 2, y: 1 }] });
+
+  setMazeDirection(game, "__proto__");
+  setMazeDirection(game, "right");
+  stepMazeMuncher(game);
+
+  assert.deepEqual(
+    { x: game.player.x, y: game.player.y },
+    { x: 2, y: 1 },
+  );
+  assert.equal(game.score, 10);
+});

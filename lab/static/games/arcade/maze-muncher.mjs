@@ -55,7 +55,11 @@ const COUNTERCLOCKWISE = Object.freeze({
 function normalizeDirection(direction) {
   if (typeof direction !== "string") return null;
   const value = direction.trim().toLowerCase();
-  return DIRECTIONS[value] ? value : DIRECTION_ALIASES[value] ?? null;
+  if (Object.prototype.hasOwnProperty.call(DIRECTIONS, value)) return value;
+  if (Object.prototype.hasOwnProperty.call(DIRECTION_ALIASES, value)) {
+    return DIRECTION_ALIASES[value];
+  }
+  return null;
 }
 
 function clonePosition(position, label) {
@@ -247,6 +251,20 @@ export function createMazeMuncher(options = {}) {
       startDirection: direction,
     };
   });
+
+  const spawnOwners = new Map([[positionKey(game.player), "player"]]);
+  for (let index = 0; index < game.enemies.length; index += 1) {
+    const enemy = game.enemies[index];
+    const key = positionKey(enemy);
+    const owner = spawnOwners.get(key);
+    if (owner === "player") {
+      throw new Error(`Enemy ${index + 1} start overlaps player start at ${key}`);
+    }
+    if (owner) {
+      throw new Error(`Duplicate enemy spawn at ${key} (Enemy ${index + 1} overlaps ${owner})`);
+    }
+    spawnOwners.set(key, `Enemy ${index + 1}`);
+  }
 
   const occupied = new Set([
     positionKey(game.player),
