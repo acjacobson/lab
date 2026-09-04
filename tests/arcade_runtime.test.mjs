@@ -101,6 +101,11 @@ class FakeElement extends FakeEventTarget {
   releasePointerCapture(pointerId) {
     if (this.capturedPointerId === pointerId) this.capturedPointerId = null;
   }
+
+  scrollIntoView(options) {
+    this.scrollIntoViewCalls ??= [];
+    this.scrollIntoViewCalls.push(options);
+  }
 }
 
 class FakeCanvas extends FakeElement {
@@ -134,6 +139,11 @@ class FakeDocument extends FakeEventTarget {
 
   getElementById(id) {
     return this.elements.get(id) ?? null;
+  }
+
+  querySelector(selector) {
+    if (selector === ".screen-inset") return this.screenInset ?? null;
+    return null;
   }
 
   querySelectorAll(selector) {
@@ -217,6 +227,7 @@ function createEnvironment() {
   screenInset.appendChild(selector);
   screenInset.appendChild(screenMessage);
   document.body.appendChild(screenInset);
+  document.screenInset = screenInset;
 
   const choices = ["block-drop", "brick-breaker", "alien-blaster", "maze-muncher"].map((slug) => {
     const choice = new FakeElement("button", document);
@@ -424,5 +435,145 @@ test("all four game controls start and accept their primary interaction", async 
     } finally {
       environment.restore();
     }
+  }
+});
+
+test("clicking Maze Muncher in-game Start returns keyboard focus to the canvas", async () => {
+  const environment = await loadController();
+  try {
+    environment.choices[3].click();
+    environment.primaryAction.click();
+    assert.equal(environment.hook.snapshot().status, "ready");
+
+    environment.primaryAction.focus();
+    environment.primaryAction.click();
+    assert.equal(environment.hook.snapshot().status, "playing");
+    assert.equal(environment.document.activeElement, environment.canvas);
+
+    environment.window.flush(0);
+    const beforeMove = environment.hook.snapshot();
+    const directionKey = dispatchKey(environment, environment.document.activeElement, "ArrowRight");
+    assert.equal(directionKey.defaultPrevented, true);
+    environment.window.flush(160);
+
+    const afterMove = environment.hook.snapshot();
+    assert.equal(afterMove.player.x, beforeMove.player.x + 1);
+    assert.equal(afterMove.score, beforeMove.score + 10);
+  } finally {
+    environment.restore();
+  }
+});
+
+test("maze starts ready, accepts a buffered direction, exposes progress, and restarts", async () => {
+  const environment = await loadController();
+  try {
+    environment.choices[3].click();
+    environment.primaryAction.click();
+
+    const ready = environment.hook.snapshot();
+    assert.equal(ready.status, "ready");
+    assert.equal(ready.phase, "ready");
+    assert.equal(environment.primaryAction.textContent, "Start");
+    assert.equal(ready.width, 15);
+    assert.equal(ready.height, 11);
+    assert.equal(ready.player.requestedDirection, "left");
+    assert.equal(ready.remainingPellets, ready.totalPellets);
+
+    environment.primaryAction.click();
+    assert.equal(environment.hook.snapshot().status, "playing");
+    environment.window.flush(0);
+    const beforeMove = environment.hook.snapshot();
+    dispatchKey(environment, environment.canvas, "ArrowRight");
+    assert.equal(environment.hook.snapshot().player.requestedDirection, "right");
+    environment.window.flush(160);
+    const afterMove = environment.hook.snapshot();
+    assert.equal(afterMove.player.x, beforeMove.player.x + 1);
+    assert.equal(afterMove.player.y, beforeMove.player.y);
+    assert.ok(afterMove.remainingPellets < afterMove.totalPellets);
+    assert.ok(afterMove.progress > 0);
+
+    environment.restartButton.click();
+    const restarted = environment.hook.snapshot();
+    assert.equal(restarted.status, "ready");
+    assert.equal(restarted.score, 0);
+    assert.equal(restarted.lives, 3);
+    assert.equal(restarted.remainingPellets, restarted.totalPellets);
+  } finally {
+    environment.restore();
+  }
+});
+
+test("starting Maze Muncher recenters the canvas without changing other game layout", async () => {
+  const environment = await loadController();
+  try {
+    environment.choices[3].click();
+    environment.primaryAction.click();
+    environment.primaryAction.click();
+    assert.deepEqual(environment.canvas.scrollIntoViewCalls, [
+      { block: "center", inline: "nearest" },
+      { block: "center", inline: "nearest" },
+    ]);
+  } finally {
+    environment.restore();
+  }
+});
+
+test("Maze Muncher freezes all simulation state while the window is unfocused", async () => {
+  const environment = await loadController();
+  try {
+    environment.choices[3].click();
+    environment.primaryAction.click();
+    environment.primaryAction.click();
+    environment.window.flush(0);
+    dispatchKey(environment, environment.canvas, "ArrowRight");
+    environment.window.flush(160);
+    const beforeBlur = environment.hook.snapshot();
+
+    environment.window.dispatchEvent(createEvent("blur"));
+    assert.equal(environment.hook.paused, true);
+    environment.window.flush(500);
+
+    assert.deepEqual(environment.hook.snapshot(), beforeBlur);
+
+    environment.window.dispatchEvent(createEvent("focus"));
+    assert.equal(environment.hook.paused, false);
+    environment.window.flush(0);
+    environment.window.flush(160);
+    const resumed = environment.hook.snapshot();
+    assert.equal(resumed.player.x, beforeBlur.player.x + 1);
+    assert.equal(resumed.score, beforeBlur.score + 10);
+  } finally {
+    environment.restore();
+  }
+});
+
+test("Maze Muncher freezes all simulation state while the document is hidden", async () => {
+  const environment = await loadController();
+  try {
+    environment.choices[3].click();
+    environment.primaryAction.click();
+    environment.primaryAction.click();
+    environment.window.flush(0);
+    dispatchKey(environment, environment.canvas, "ArrowRight");
+    environment.window.flush(160);
+    const beforeHidden = environment.hook.snapshot();
+
+    environment.document.hidden = true;
+    environment.document.dispatchEvent(createEvent("visibilitychange"));
+    assert.equal(environment.hook.paused, true);
+    environment.window.flush(500);
+
+    assert.deepEqual(environment.hook.snapshot(), beforeHidden);
+
+    environment.document.hidden = false;
+    environment.document.dispatchEvent(createEvent("visibilitychange"));
+    assert.equal(environment.hook.paused, false);
+    environment.window.flush(0);
+    environment.window.flush(160);
+    const resumed = environment.hook.snapshot();
+    assert.equal(resumed.player.x, beforeHidden.player.x + 1);
+    assert.equal(resumed.score, beforeHidden.score + 10);
+  } finally {
+    environment.restore();
   }
 });

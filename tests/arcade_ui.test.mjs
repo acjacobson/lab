@@ -192,3 +192,53 @@ test("test script runs the arcade UI contract suite", () => {
   assert.match(script, /node --test tests\/arcade_ui\.test\.mjs/);
   assert.match(script, /node --test tests\/arcade_runtime\.test\.mjs/);
 });
+
+test("maze integration exposes ready, buffered, life-loss, clear, and restart states", () => {
+  const source = readSource();
+  assert.match(source, /startMazeMuncher/);
+  assert.match(source, /restartMazeMuncher/);
+  assert.match(source, /createMazeMuncher\(\{\s*tileSize:\s*24\s*\}\)/);
+  for (const field of [
+    "requestedDirection", "remainingPellets", "totalPellets", "progress", "phase",
+    "life-lost", "board-cleared", "game-over",
+  ]) {
+    assert.match(source, new RegExp(field));
+  }
+  assert.match(source, /state\.progress/);
+  assert.match(source, /state\.remainingPellets/);
+  assert.match(source, /state\.totalPellets/);
+  assert.match(source, /state\.player\.requestedDirection/);
+});
+
+test("maze screen status reserves a dedicated band below the canvas", () => {
+  const source = readSource();
+  const stylesheet = fs.readFileSync(stylesheetPath, "utf8");
+  assert.match(source, /const screenInset = document\.querySelector\(["']\.screen-inset["']\)/);
+  assert.match(source, /activeGame/);
+  assert.match(
+    stylesheet,
+    /\.screen-inset\[data-active-game=["']maze-muncher["']\]\s*\{[^}]*overflow:\s*visible;[^}]*margin-bottom:/s,
+  );
+  assert.match(
+    stylesheet,
+    /\.screen-inset\[data-active-game=["']maze-muncher["']\]\s+\.screen-message\s*\{[^}]*top:\s*calc\(100% \+ 8px\);[^}]*bottom:\s*auto;/s,
+  );
+});
+
+test("starting Maze Muncher recenters its canvas for short phone viewports", () => {
+  const source = readSource();
+  assert.match(source, /scrollIntoView\(\{[^}]*block:\s*["']center["'][^}]*inline:\s*["']nearest["']/s);
+});
+
+test("Maze Muncher uses compact complete status copy and a responsive readable HUD", () => {
+  const source = readSource();
+  const stylesheet = fs.readFileSync(stylesheetPath, "utf8");
+  assert.match(source, /focus\(\{\s*preventScroll:\s*true\s*\}\)/);
+  assert.match(source, /Arrows\/WASD/);
+  assert.match(source, /Eat pellets/);
+  assert.match(source, /Start/);
+  assert.match(source, /function drawMazeHud/);
+  assert.match(source, /function drawMazeMessage/);
+  assert.match(stylesheet, /data-active-game=["']maze-muncher["'][^}]*[\s\S]*?white-space:\s*normal/s);
+  assert.match(stylesheet, /data-active-game=["']maze-muncher["'][^}]*[\s\S]*?text-overflow:\s*clip/s);
+});

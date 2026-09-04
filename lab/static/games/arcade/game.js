@@ -19,13 +19,16 @@ import {
 } from "./alien-blaster.mjs";
 import {
   createMazeMuncher,
+  restartMazeMuncher,
   setMazeDirection,
+  startMazeMuncher,
   stepMazeMuncher,
 } from "./maze-muncher.mjs";
 
 const canvas = document.getElementById("game-canvas");
 const context = canvas?.getContext?.("2d");
 const selector = document.getElementById("game-selector");
+const screenInset = document.querySelector(".screen-inset");
 const screenMessage = document.getElementById("screen-message");
 const creditDisplay = document.getElementById("credit-display");
 const highScoreDisplay = document.getElementById("high-score");
@@ -57,7 +60,7 @@ const GAME_DEFINITIONS = Object.freeze({
   }),
   "maze-muncher": Object.freeze({
     label: "Maze Muncher",
-    create: () => ({ engine: createMazeMuncher({ tileSize: 32 }) }),
+    create: () => ({ engine: createMazeMuncher({ tileSize: 24 }) }),
   }),
 });
 
@@ -122,6 +125,7 @@ let lastEventState = null;
 let blockGravityTimer = 0;
 let blockMoveTimer = 0;
 let mazeStepTimer = 0;
+let mazeLifecyclePaused = false;
 let lastInputDirection = null;
 const heldDirections = new Set();
 const heldKeyboardKeys = new Set();
@@ -160,6 +164,9 @@ function isFinished(state) {
 
 function statusLabel(state) {
   if (!state) return "READY";
+  if (state.phase === "life-lost" || state.lastEvent === "life-lost") return "LIFE LOST";
+  if (state.phase === "board-cleared") return "MAZE CLEAR";
+  if (state.phase === "game-over") return "GAME OVER";
   if (state.status === "won") return "YOU WIN";
   if (state.status === "lost" || state.status === "gameover") return "GAME OVER";
   if (state.status === "ready") return "READY";
@@ -168,6 +175,12 @@ function statusLabel(state) {
 }
 
 function instructionFor(slug, state) {
+  if (slug === "maze-muncher") {
+    if (isFinished(state)) return "Restart to play";
+    if (state?.phase === "life-lost") return "Life lost · Keep moving";
+    if (state?.status === "ready") return "Start · Arrows/WASD";
+    return "Arrows/WASD · Eat pellets";
+  }
   if (isFinished(state)) return "Press Restart or Start again";
   if (slug === "block-drop") return "Arrows move · Up rotates · Space drops";
   if (slug === "brick-breaker") {
@@ -175,6 +188,15 @@ function instructionFor(slug, state) {
   }
   if (slug === "alien-blaster") return "Move cannon · Press Fire";
   return "Choose a direction · Clear every pellet";
+}
+
+function updateScreenLayout() {
+  if (!screenInset) return;
+  if (!selectorVisible && activeSlug === "maze-muncher") {
+    screenInset.dataset.activeGame = activeSlug;
+  } else {
+    delete screenInset.dataset.activeGame;
+  }
 }
 
 function updateSelectorVisibility() {
@@ -218,6 +240,9 @@ function updatePrimaryAction(state = stateOf(activeGame)) {
   } else if (activeSlug === "alien-blaster") {
     primaryAction.textContent = "Fire";
     primaryAction.setAttribute("aria-label", "Fire at aliens");
+  } else if (activeSlug === "maze-muncher" && state?.status === "ready") {
+    primaryAction.textContent = "Start";
+    primaryAction.setAttribute("aria-label", "Start Maze Muncher");
   } else {
     primaryAction.textContent = "Action";
     primaryAction.setAttribute("aria-label", "Maze action");
@@ -225,6 +250,7 @@ function updatePrimaryAction(state = stateOf(activeGame)) {
 }
 
 function updateAccessibleStatus() {
+  updateScreenLayout();
   updateSelectorVisibility();
   updateChoiceState(false);
   updatePrimaryAction();
@@ -239,7 +265,8 @@ function updateAccessibleStatus() {
   const state = stateOf(activeGame);
   const label = labelFor(activeSlug);
   creditDisplay.textContent = statusLabel(state);
-  screenMessage.textContent = `${label} · ${instructionFor(activeSlug, state)}`;
+  const instruction = instructionFor(activeSlug, state);
+  screenMessage.textContent = activeSlug === "maze-muncher" ? instruction : `${label} · ${instruction}`;
 }
 
 function announce(message) {
@@ -322,6 +349,34 @@ function clearHeldInput() {
   heldPointerDirections.clear();
   lastInputDirection = null;
   blockMoveTimer = 0;
+}
+
+function pauseMazeForLifecycle() {
+  clearHeldInput();
+  if (activeSlug !== "maze-muncher" || !activeGame) return;
+  mazeLifecyclePaused = true;
+  mazeStepTimer = 0;
+  stopLoop();
+}
+
+function resumeMazeFromLifecycle() {
+  if (!mazeLifecyclePaused || document.hidden || activeSlug !== "maze-muncher" || !activeGame) return;
+  mazeLifecyclePaused = false;
+  if (selectorVisible || isFinished(stateOf(activeGame))) return;
+  startLoop();
+}
+
+function scrollMazeIntoView() {
+  if (activeSlug !== "maze-muncher" || selectorVisible || typeof canvas?.scrollIntoView !== "function") return;
+  canvas.scrollIntoView({ block: "center", inline: "nearest" });
+}
+
+function focusGameCanvas() {
+  try {
+    canvas.focus({ preventScroll: true });
+  } catch {
+    canvas.focus();
+  }
 }
 
 function refreshHeldDirections() {
@@ -440,6 +495,7 @@ function startGame(slug) {
   if (!GAME_DEFINITIONS[slug]) return false;
   stopLoop();
   clearHeldInput();
+  mazeLifecyclePaused = false;
   activeSlug = slug;
   selectedSlug = slug;
   activeGame = createActiveGame(slug);
@@ -451,12 +507,10 @@ function startGame(slug) {
   updateChoiceState(false);
   updateAccessibleStatus();
   renderActiveGame();
-  try {
-    canvas.focus({ preventScroll: true });
-  } catch {
-    canvas.focus();
-  }
-  startLoop();
+  focusGameCanvas();
+  scrollMazeIntoView();
+  if (activeSlug === "maze-muncher" && document.hidden) mazeLifecyclePaused = true;
+  if (!mazeLifecyclePaused) startLoop();
   return true;
 }
 
@@ -470,6 +524,28 @@ function startSelectedGame({ cue = true } = {}) {
 function restartGame({ cue = true } = {}) {
   const slug = activeSlug ?? selectedSlug;
   if (!slug) return false;
+
+  if (activeSlug === "maze-muncher" && activeGame?.engine) {
+    stopLoop();
+    clearHeldInput();
+    mazeLifecyclePaused = false;
+    restartMazeMuncher(activeGame.engine);
+    selectorVisible = false;
+    blockGravityTimer = 0;
+    blockMoveTimer = 0;
+    mazeStepTimer = 0;
+    lastEventState = captureEventState(stateOf(activeGame));
+    updateChoiceState(false);
+    updateAccessibleStatus();
+    renderActiveGame();
+    focusGameCanvas();
+    scrollMazeIntoView();
+    if (document.hidden) mazeLifecyclePaused = true;
+    if (!mazeLifecyclePaused) startLoop();
+    if (cue) playCue("start");
+    return true;
+  }
+
   const restarted = startGame(slug);
   if (restarted && cue) playCue("start");
   return restarted;
@@ -478,6 +554,7 @@ function restartGame({ cue = true } = {}) {
 function goHome() {
   stopLoop();
   clearHeldInput();
+  mazeLifecyclePaused = false;
   activeSlug = null;
   activeGame = null;
   selectorVisible = true;
@@ -488,7 +565,7 @@ function goHome() {
 }
 
 function performDirectionAction(direction) {
-  if (selectorVisible || !activeGame) return;
+  if (selectorVisible || !activeGame || (activeSlug === "maze-muncher" && mazeLifecyclePaused)) return;
   const state = stateOf(activeGame);
   const before = captureEventState(state);
   if (isFinished(state)) return;
@@ -535,6 +612,11 @@ function triggerPrimary({ hardDrop = false } = {}) {
   } else if (activeSlug === "alien-blaster") {
     fireAlienBlaster(activeGame.engine);
     playCue("fire");
+  } else if (activeSlug === "maze-muncher" && state.status === "ready") {
+    startMazeMuncher(state);
+    focusGameCanvas();
+    scrollMazeIntoView();
+    playCue("start");
   }
 
   const after = captureEventState(state);
@@ -679,7 +761,7 @@ function updateAlienBlaster(elapsed) {
 
 function updateMazeMuncher(elapsed) {
   const state = stateOf(activeGame);
-  if (!state || isFinished(state)) return;
+  if (!state || isFinished(state) || state.status === "ready" || mazeLifecyclePaused) return;
   const direction = currentDirection();
   if (direction) setMazeDirection(state, direction);
   mazeStepTimer += elapsed;
@@ -759,6 +841,71 @@ function drawWorldMessage(message, width = WORLD_WIDTH, height = WORLD_HEIGHT) {
   context.font = "bold 13px monospace";
   context.textAlign = "center";
   context.fillText(message.toUpperCase(), width / 2, height / 2 + 5);
+  context.textAlign = "left";
+}
+
+function mazeCanvasScale() {
+  const width = Number(canvas?.getBoundingClientRect?.().width);
+  return Number.isFinite(width) && width > 0 ? width / WORLD_WIDTH : 1;
+}
+
+function drawMazeHud(state) {
+  const scale = mazeCanvasScale();
+  const narrow = scale < 0.8;
+  const tileSize = Math.min(Number.isFinite(state.tileSize) ? state.tileSize : 24, narrow ? 23 : 24);
+  if (!narrow) {
+    drawWorldHud("Maze Muncher", state);
+    return { narrow: false, tileSize, offsetY: 34 };
+  }
+
+  const fontSize = Math.max(16, Math.min(22, Math.round(10 / scale)));
+  const titleBaseline = fontSize + 3;
+  const scoreBaseline = titleBaseline + fontSize + 5;
+  const progressBaseline = scoreBaseline + fontSize + 5;
+  const remaining = Math.max(0, Math.floor(Number(state.remainingPellets) || 0));
+  const total = Math.max(0, Math.floor(Number(state.totalPellets) || 0));
+  const progress = Math.round(Math.max(0, Math.min(1, Number(state.progress) || 0)) * 100);
+  const lives = state?.lives >= 0 ? String(state.lives) : "-";
+
+  context.fillStyle = COLORS.ink;
+  context.font = `bold ${fontSize}px monospace`;
+  context.fillText("MAZE MUNCHER", 12, titleBaseline);
+  context.textAlign = "right";
+  context.fillText(statusLabel(state), WORLD_WIDTH - 12, titleBaseline);
+
+  context.fillStyle = COLORS.gold;
+  context.font = `${fontSize}px monospace`;
+  context.textAlign = "left";
+  context.fillText(`SCORE ${formatScore(state?.score)}`, 12, scoreBaseline);
+  context.textAlign = "right";
+  context.fillText(`LIVES ${lives}`, WORLD_WIDTH - 12, scoreBaseline);
+  context.fillText(`PROGRESS ${String(progress).padStart(2, "0")}%`, WORLD_WIDTH - 12, progressBaseline);
+  context.textAlign = "left";
+  context.fillText(`PELLETS ${remaining}/${total}`, 12, progressBaseline);
+
+  const separatorY = progressBaseline + 6;
+  context.strokeStyle = "rgba(221, 255, 240, 0.35)";
+  context.beginPath();
+  context.moveTo(10, separatorY);
+  context.lineTo(WORLD_WIDTH - 10, separatorY);
+  context.stroke();
+  return { narrow: true, tileSize, offsetY: separatorY + 4 };
+}
+
+function drawMazeMessage(message, width = WORLD_WIDTH, height = WORLD_HEIGHT) {
+  if (mazeCanvasScale() >= 0.8) {
+    drawWorldMessage(message, width, height);
+    return;
+  }
+  const fontSize = Math.max(22, Math.min(30, Math.round(13 / mazeCanvasScale())));
+  context.fillStyle = "rgba(3, 12, 16, 0.86)";
+  context.fillRect(24, height / 2 - 29, width - 48, 58);
+  context.strokeStyle = COLORS.gold;
+  context.strokeRect(24, height / 2 - 29, width - 48, 58);
+  context.fillStyle = COLORS.gold;
+  context.font = `bold ${fontSize}px monospace`;
+  context.textAlign = "center";
+  context.fillText(message.toUpperCase(), width / 2, height / 2 + Math.round(fontSize * 0.35));
   context.textAlign = "left";
 }
 
@@ -917,58 +1064,118 @@ function renderAlienBlaster() {
   context.restore();
 }
 
+function drawMazePlayer(state, tile, offsetX, offsetY) {
+  const centerX = offsetX + state.player.x * tile + tile / 2;
+  const centerY = offsetY + state.player.y * tile + tile / 2;
+  const radius = tile * 0.38;
+  const pointsByDirection = {
+    right: [[centerX + radius, centerY], [centerX - radius * 0.72, centerY - radius], [centerX - radius * 0.72, centerY + radius]],
+    left: [[centerX - radius, centerY], [centerX + radius * 0.72, centerY - radius], [centerX + radius * 0.72, centerY + radius]],
+    up: [[centerX, centerY - radius], [centerX - radius, centerY + radius * 0.72], [centerX + radius, centerY + radius * 0.72]],
+    down: [[centerX, centerY + radius], [centerX - radius, centerY - radius * 0.72], [centerX + radius, centerY - radius * 0.72]],
+  };
+  const points = pointsByDirection[state.player.direction] ?? pointsByDirection.left;
+  context.fillStyle = COLORS.pink;
+  context.beginPath();
+  context.moveTo(points[0][0], points[0][1]);
+  context.lineTo(points[1][0], points[1][1]);
+  context.lineTo(points[2][0], points[2][1]);
+  context.closePath();
+  context.fill();
+  context.strokeStyle = "#fff1c1";
+  context.stroke();
+  context.fillStyle = "#090c1d";
+  context.fillRect(centerX - 2, centerY - 2, 4, 4);
+}
+
+function drawMazeEnemy(enemy, tile, offsetX, offsetY) {
+  const centerX = offsetX + enemy.x * tile + tile / 2;
+  const centerY = offsetY + enemy.y * tile + tile / 2;
+  const radius = tile * 0.35;
+  context.fillStyle = enemy.profile === "patrol" ? COLORS.cyan : COLORS.red;
+
+  if (enemy.profile === "patrol") {
+    context.beginPath();
+    context.moveTo(centerX, centerY - radius);
+    context.lineTo(centerX + radius, centerY - radius * 0.25);
+    context.lineTo(centerX + radius * 0.65, centerY + radius);
+    context.lineTo(centerX - radius * 0.65, centerY + radius);
+    context.lineTo(centerX - radius, centerY - radius * 0.25);
+    context.closePath();
+    context.fill();
+    context.strokeStyle = "#e9ffff";
+    context.stroke();
+  } else {
+    context.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2);
+    context.fillStyle = "#ffe0e4";
+    context.fillRect(centerX - radius - 1, centerY - radius, 2, radius * 0.65);
+    context.fillRect(centerX + radius - 1, centerY - radius, 2, radius * 0.65);
+  }
+
+  context.fillStyle = "#090c1d";
+  context.fillRect(centerX - radius * 0.42, centerY - radius * 0.15, 3, 3);
+  context.fillRect(centerX + radius * 0.12, centerY - radius * 0.15, 3, 3);
+}
+
 function renderMazeMuncher() {
   const state = stateOf(activeGame);
   clearScreen("#090c1d");
-  drawWorldHud("Maze Muncher", state);
-  const tile = state.tileSize;
+  const layout = drawMazeHud(state);
+  const tile = layout.tileSize;
   const mazeWidth = state.width * tile;
-  const mazeHeight = state.height * tile;
   const offsetX = Math.floor((WORLD_WIDTH - mazeWidth) / 2);
-  const offsetY = 34;
+  const offsetY = layout.offsetY;
 
   for (let y = 0; y < state.height; y += 1) {
     for (let x = 0; x < state.width; x += 1) {
       const wall = state.map[y][x] === "#";
       const px = offsetX + x * tile;
       const py = offsetY + y * tile;
-      context.fillStyle = wall ? "#193e57" : "#07131f";
-      context.fillRect(px, py, tile, tile);
-      context.strokeStyle = wall ? "#5bd4cf" : "rgba(91,212,207,0.08)";
-      context.strokeRect(px, py, tile, tile);
+      if (wall) {
+        context.fillStyle = "#12344d";
+        context.fillRect(px, py, tile, tile);
+        context.fillStyle = "rgba(91, 212, 207, 0.25)";
+        context.fillRect(px + 2, py + 2, Math.max(1, tile - 4), 2);
+        context.strokeStyle = "#5bd4cf";
+        context.strokeRect(px + 1, py + 1, tile - 2, tile - 2);
+      } else {
+        context.fillStyle = "#06111d";
+        context.fillRect(px, py, tile, tile);
+        context.strokeStyle = "rgba(91, 212, 207, 0.13)";
+        context.strokeRect(px, py, tile, tile);
+      }
     }
   }
 
   context.fillStyle = COLORS.gold;
   for (const pellet of state.pellets) {
-    context.beginPath();
-    context.arc(offsetX + pellet.x * tile + tile / 2, offsetY + pellet.y * tile + tile / 2, 3, 0, Math.PI * 2);
-    context.fill();
+    const centerX = offsetX + pellet.x * tile + tile / 2;
+    const centerY = offsetY + pellet.y * tile + tile / 2;
+    const radius = Math.max(2, tile * 0.11);
+    context.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2);
   }
 
-  context.fillStyle = COLORS.pink;
-  context.beginPath();
-  context.arc(offsetX + state.player.x * tile + tile / 2, offsetY + state.player.y * tile + tile / 2, tile * 0.34, 0, Math.PI * 2);
-  context.fill();
-  context.fillStyle = "#07171a";
-  context.beginPath();
-  context.arc(offsetX + state.player.x * tile + tile * 0.43, offsetY + state.player.y * tile + tile * 0.42, 2, 0, Math.PI * 2);
-  context.fill();
+  state.enemies.forEach((enemy) => drawMazeEnemy(enemy, tile, offsetX, offsetY));
+  drawMazePlayer(state, tile, offsetX, offsetY);
 
-  state.enemies.forEach((enemy, index) => {
-    context.fillStyle = index % 2 === 0 ? COLORS.red : COLORS.cyan;
-    context.fillRect(offsetX + enemy.x * tile + 5, offsetY + enemy.y * tile + 7, tile - 10, tile - 9);
-    context.fillStyle = "#07171a";
-    context.fillRect(offsetX + enemy.x * tile + 9, offsetY + enemy.y * tile + 11, 3, 3);
-    context.fillRect(offsetX + enemy.x * tile + tile - 12, offsetY + enemy.y * tile + 11, 3, 3);
-  });
+  if (!layout.narrow) {
+    const remaining = Math.max(0, Math.floor(Number(state.remainingPellets) || 0));
+    const total = Math.max(0, Math.floor(Number(state.totalPellets) || 0));
+    const progress = Math.round(Math.max(0, Math.min(1, Number(state.progress) || 0)) * 100);
+    context.fillStyle = COLORS.muted;
+    context.font = "10px monospace";
+    context.fillText(`PELLETS ${remaining}/${total}`, 12, 343);
+    context.fillText(`PROGRESS ${String(progress).padStart(2, "0")}%`, 170, 343);
+    context.strokeStyle = "rgba(221, 255, 240, 0.45)";
+    context.strokeRect(304, 336, 164, 9);
+    context.fillStyle = COLORS.gold;
+    context.fillRect(306, 338, Math.max(0, 160 * progress / 100), 5);
+  }
 
-  context.fillStyle = COLORS.muted;
-  context.font = "10px monospace";
-  context.fillText("ARROWS / WASD TO MUNCH", 13, 343);
-  context.fillText(`PELLETS ${state.pellets.length}`, 335, 343);
-  if (state.status === "won") drawWorldMessage("MAZE CLEARED", WORLD_WIDTH, WORLD_HEIGHT);
-  if (state.status === "lost") drawWorldMessage("CAUGHT", WORLD_WIDTH, WORLD_HEIGHT);
+  if (state.status === "ready") drawMazeMessage("PRESS START", WORLD_WIDTH, WORLD_HEIGHT);
+  if (state.phase === "life-lost") drawMazeMessage("LIFE LOST", WORLD_WIDTH, WORLD_HEIGHT);
+  if (state.phase === "board-cleared") drawMazeMessage("BOARD CLEARED", WORLD_WIDTH, WORLD_HEIGHT);
+  if (state.phase === "game-over") drawMazeMessage("GAME OVER", WORLD_WIDTH, WORLD_HEIGHT);
 }
 
 function renderSelectorBackdrop() {
@@ -1075,9 +1282,23 @@ function snapshotForTest() {
       score: state.score,
       lives: state.lives,
       status: state.status,
+      phase: state.phase,
+      finished: state.finished,
       gameOver: state.gameOver,
+      boardCleared: state.boardCleared,
+      lifeLost: state.lifeLost,
+      lastEvent: state.lastEvent,
+      totalPellets: state.totalPellets,
+      remainingPellets: state.remainingPellets,
+      pelletsRemaining: state.pelletsRemaining,
+      progress: state.progress,
       map: [...state.map],
-      player: { ...state.player },
+      player: {
+        ...state.player,
+        direction: state.player.direction,
+        requestedDirection: state.player.requestedDirection,
+        nextDirection: state.player.nextDirection,
+      },
       enemies: state.enemies.map((enemy) => ({ ...enemy })),
       pellets: state.pellets.map((pellet) => ({ ...pellet })),
     };
@@ -1168,9 +1389,11 @@ window.addEventListener("keydown", handleKeyDown);
 window.addEventListener("keyup", handleKeyUp);
 window.addEventListener("pointerup", (event) => releasePointerDirection(event.pointerId));
 window.addEventListener("pointercancel", (event) => releasePointerDirection(event.pointerId));
-window.addEventListener("blur", clearHeldInput);
+window.addEventListener("blur", pauseMazeForLifecycle);
+window.addEventListener("focus", resumeMazeFromLifecycle);
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) clearHeldInput();
+  if (document.hidden) pauseMazeForLifecycle();
+  else resumeMazeFromLifecycle();
 });
 
 canvas.tabIndex = 0;
