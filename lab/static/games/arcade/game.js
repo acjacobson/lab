@@ -165,6 +165,7 @@ function isFinished(state) {
 function statusLabel(state) {
   if (!state) return "READY";
   if (state.phase === "life-lost" || state.lastEvent === "life-lost") return "LIFE LOST";
+  if (state.collisionGraceTicks > 0 && state.status === "playing") return "SAFE";
   if (state.phase === "board-cleared") return "MAZE CLEAR";
   if (state.phase === "game-over") return "GAME OVER";
   if (state.status === "won") return "YOU WIN";
@@ -177,7 +178,7 @@ function statusLabel(state) {
 function instructionFor(slug, state) {
   if (slug === "maze-muncher") {
     if (isFinished(state)) return "Restart to play";
-    if (state?.phase === "life-lost") return "Life lost · Keep moving";
+    if (state?.phase === "life-lost") return "Life lost · Get ready";
     if (state?.status === "ready") return "Start · Arrows/WASD";
     return "Arrows/WASD · Eat pellets";
   }
@@ -194,8 +195,10 @@ function updateScreenLayout() {
   if (!screenInset) return;
   if (!selectorVisible && activeSlug === "maze-muncher") {
     screenInset.dataset.activeGame = activeSlug;
+    document.body.dataset.activeGame = activeSlug;
   } else {
     delete screenInset.dataset.activeGame;
+    delete document.body.dataset.activeGame;
   }
 }
 
@@ -849,19 +852,25 @@ function mazeCanvasScale() {
   return Number.isFinite(width) && width > 0 ? width / WORLD_WIDTH : 1;
 }
 
+function isMazeNarrowViewport() {
+  const viewportWidth = Number(window?.innerWidth);
+  if (Number.isFinite(viewportWidth) && viewportWidth > 0) return viewportWidth <= 700;
+  return mazeCanvasScale() < 0.8;
+}
+
 function drawMazeHud(state) {
   const scale = mazeCanvasScale();
-  const narrow = scale < 0.8;
-  const tileSize = Math.min(Number.isFinite(state.tileSize) ? state.tileSize : 24, narrow ? 23 : 24);
+  const narrow = isMazeNarrowViewport();
+  const baseTileSize = Number.isFinite(state.tileSize) ? state.tileSize : 24;
   if (!narrow) {
     drawWorldHud("Maze Muncher", state);
-    return { narrow: false, tileSize, offsetY: 34 };
+    return { narrow: false, tileSize: Math.min(baseTileSize, 24), offsetY: 34 };
   }
 
-  const fontSize = Math.max(16, Math.min(22, Math.round(10 / scale)));
-  const titleBaseline = fontSize + 3;
-  const scoreBaseline = titleBaseline + fontSize + 5;
-  const progressBaseline = scoreBaseline + fontSize + 5;
+  const fontSize = Math.max(13, Math.min(17, Math.round(9 / scale)));
+  const titleBaseline = fontSize + 1;
+  const scoreBaseline = titleBaseline + fontSize + 3;
+  const progressBaseline = scoreBaseline + fontSize + 3;
   const remaining = Math.max(0, Math.floor(Number(state.remainingPellets) || 0));
   const total = Math.max(0, Math.floor(Number(state.totalPellets) || 0));
   const progress = Math.round(Math.max(0, Math.min(1, Number(state.progress) || 0)) * 100);
@@ -869,31 +878,55 @@ function drawMazeHud(state) {
 
   context.fillStyle = COLORS.ink;
   context.font = `bold ${fontSize}px monospace`;
-  context.fillText("MAZE MUNCHER", 12, titleBaseline);
+  context.fillText("MAZE MUNCHER", 10, titleBaseline);
   context.textAlign = "right";
-  context.fillText(statusLabel(state), WORLD_WIDTH - 12, titleBaseline);
+  context.fillText(statusLabel(state), WORLD_WIDTH - 10, titleBaseline);
 
   context.fillStyle = COLORS.gold;
   context.font = `${fontSize}px monospace`;
   context.textAlign = "left";
-  context.fillText(`SCORE ${formatScore(state?.score)}`, 12, scoreBaseline);
+  context.fillText(`SCORE ${formatScore(state?.score)}`, 10, scoreBaseline);
   context.textAlign = "right";
-  context.fillText(`LIVES ${lives}`, WORLD_WIDTH - 12, scoreBaseline);
-  context.fillText(`PROGRESS ${String(progress).padStart(2, "0")}%`, WORLD_WIDTH - 12, progressBaseline);
+  context.fillText(`LIVES ${lives}`, WORLD_WIDTH - 10, scoreBaseline);
   context.textAlign = "left";
-  context.fillText(`PELLETS ${remaining}/${total}`, 12, progressBaseline);
+  context.fillText(`PELLETS ${remaining}/${total}`, 10, progressBaseline);
+  context.textAlign = "right";
+  context.fillText(`PROG ${String(progress).padStart(2, "0")}%`, WORLD_WIDTH - 10, progressBaseline);
 
-  const separatorY = progressBaseline + 6;
+  const separatorY = progressBaseline + 5;
   context.strokeStyle = "rgba(221, 255, 240, 0.35)";
   context.beginPath();
-  context.moveTo(10, separatorY);
-  context.lineTo(WORLD_WIDTH - 10, separatorY);
+  context.moveTo(8, separatorY);
+  context.lineTo(WORLD_WIDTH - 8, separatorY);
   context.stroke();
-  return { narrow: true, tileSize, offsetY: separatorY + 4 };
+  context.textAlign = "left";
+  return { narrow: true, offsetY: separatorY + 4 };
+}
+
+function mazeLayout(state, hud) {
+  if (!hud.narrow) {
+    const tileSize = Math.min(Number.isFinite(state.tileSize) ? state.tileSize : 24, 24);
+    const mazeWidth = state.width * tileSize;
+    return {
+      tileSize,
+      offsetX: Math.floor((WORLD_WIDTH - mazeWidth) / 2),
+      offsetY: hud.offsetY,
+    };
+  }
+
+  const availableWidth = WORLD_WIDTH - 12;
+  const availableHeight = WORLD_HEIGHT - hud.offsetY - 6;
+  const tileSize = Math.max(1, Math.floor(Math.min(availableWidth / state.width, availableHeight / state.height)));
+  const mazeWidth = state.width * tileSize;
+  return {
+    tileSize,
+    offsetX: Math.floor((WORLD_WIDTH - mazeWidth) / 2),
+    offsetY: hud.offsetY,
+  };
 }
 
 function drawMazeMessage(message, width = WORLD_WIDTH, height = WORLD_HEIGHT) {
-  if (mazeCanvasScale() >= 0.8) {
+  if (!isMazeNarrowViewport()) {
     drawWorldMessage(message, width, height);
     return;
   }
@@ -1120,10 +1153,10 @@ function drawMazeEnemy(enemy, tile, offsetX, offsetY) {
 function renderMazeMuncher() {
   const state = stateOf(activeGame);
   clearScreen("#090c1d");
-  const layout = drawMazeHud(state);
+  const hud = drawMazeHud(state);
+  const layout = mazeLayout(state, hud);
   const tile = layout.tileSize;
-  const mazeWidth = state.width * tile;
-  const offsetX = Math.floor((WORLD_WIDTH - mazeWidth) / 2);
+  const offsetX = layout.offsetX;
   const offsetY = layout.offsetY;
 
   for (let y = 0; y < state.height; y += 1) {
@@ -1158,7 +1191,7 @@ function renderMazeMuncher() {
   state.enemies.forEach((enemy) => drawMazeEnemy(enemy, tile, offsetX, offsetY));
   drawMazePlayer(state, tile, offsetX, offsetY);
 
-  if (!layout.narrow) {
+  if (!hud.narrow) {
     const remaining = Math.max(0, Math.floor(Number(state.remainingPellets) || 0));
     const total = Math.max(0, Math.floor(Number(state.totalPellets) || 0));
     const progress = Math.round(Math.max(0, Math.min(1, Number(state.progress) || 0)) * 100);
@@ -1173,7 +1206,7 @@ function renderMazeMuncher() {
   }
 
   if (state.status === "ready") drawMazeMessage("PRESS START", WORLD_WIDTH, WORLD_HEIGHT);
-  if (state.phase === "life-lost") drawMazeMessage("LIFE LOST", WORLD_WIDTH, WORLD_HEIGHT);
+  if (state.phase === "life-lost") drawMazeMessage("GET READY", WORLD_WIDTH, WORLD_HEIGHT);
   if (state.phase === "board-cleared") drawMazeMessage("BOARD CLEARED", WORLD_WIDTH, WORLD_HEIGHT);
   if (state.phase === "game-over") drawMazeMessage("GAME OVER", WORLD_WIDTH, WORLD_HEIGHT);
 }
@@ -1287,6 +1320,9 @@ function snapshotForTest() {
       gameOver: state.gameOver,
       boardCleared: state.boardCleared,
       lifeLost: state.lifeLost,
+      recoveryTicks: state.recoveryTicks,
+      collisionGraceTicks: state.collisionGraceTicks,
+      enemyMoveCooldown: state.enemyMoveCooldown,
       lastEvent: state.lastEvent,
       totalPellets: state.totalPellets,
       remainingPellets: state.remainingPellets,

@@ -19,7 +19,7 @@ function countWalkable(map) {
 }
 
 const MAZE_SEARCH_DIRECTIONS = Object.freeze(["left", "right", "up", "down"]);
-const MAZE_SEARCH_MAX_STEPS = 220;
+const MAZE_SEARCH_MAX_STEPS = 320;
 const MAZE_SEARCH_BEAM_WIDTH = 32;
 
 function cloneMazeState(game) {
@@ -347,7 +347,7 @@ test("overlapping and duplicate spawns are rejected", () => {
   );
 });
 
-test("a post-collision reset gives the player one safe tick before enemies can re-enter the spawn", () => {
+test("a post-collision reset holds recovery before enemies can re-enter the spawn", () => {
   const game = createMazeMuncher({
     enemyStarts: [{ x: 2, y: 1 }],
     enemyDirections: ["left"],
@@ -360,18 +360,25 @@ test("a post-collision reset gives the player one safe tick before enemies can r
 
   assert.equal(game.lives, 2);
   assert.equal(game.phase, "life-lost");
-  assert.equal(game.collisionGraceTicks, 1);
-  stepMazeMuncher(game);
+  assert.equal(game.recoveryTicks, 6);
+  assert.equal(game.collisionGraceTicks, 8);
+  for (let tick = 0; tick < 5; tick += 1) stepMazeMuncher(game);
 
-  assert.equal(game.lives, 2);
+  assert.equal(game.phase, "life-lost");
+  assert.equal(game.lifeLost, true);
+  stepMazeMuncher(game);
   assert.equal(game.phase, "playing");
   assert.equal(game.lifeLost, false);
-  assert.equal(game.collisionGraceTicks, 0);
+  assert.equal(game.collisionGraceTicks, 8);
+
+  stepMazeMuncher(game);
+  assert.equal(game.lives, 2);
+  assert.equal(game.collisionGraceTicks, 7);
 });
 
 test("collecting the final pellet during collision grace clears grace before the board-cleared terminal state", () => {
   const game = createMazeMuncher({
-    playerDirection: "left",
+    playerDirection: "right",
     enemyStarts: [{ x: 2, y: 1 }],
     enemyDirections: ["left"],
     enemyProfiles: ["chaser"],
@@ -381,9 +388,9 @@ test("collecting the final pellet during collision grace clears grace before the
   stepMazeMuncher(game);
 
   assert.equal(game.phase, "life-lost");
-  assert.equal(game.collisionGraceTicks, 1);
-
+  assert.equal(game.collisionGraceTicks, 8);
   setMazeDirection(game, "down");
+  for (let tick = 0; tick < 6; tick += 1) stepMazeMuncher(game);
   stepMazeMuncher(game);
 
   assert.equal(game.status, "won");
@@ -392,6 +399,73 @@ test("collecting the final pellet during collision grace clears grace before the
   assert.equal(game.finished, true);
   assert.equal(game.remainingPellets, 0);
   assert.equal(game.collisionGraceTicks, 0);
+});
+
+test("the player advances every turn while enemies wait at start and then move on a slower cadence", () => {
+  const game = createMazeMuncher({
+    enemyStarts: [{ x: 13, y: 9 }],
+    enemyDirections: ["left"],
+    enemyProfiles: ["chaser"],
+    pellets: [{ x: 1, y: 9 }],
+  });
+  startMazeMuncher(game);
+  setMazeDirection(game, "right");
+
+  for (let tick = 0; tick < 10; tick += 1) {
+    stepMazeMuncher(game);
+    assert.equal(game.player.x, tick + 2);
+    assert.deepEqual(position(game.enemies[0]), { x: 13, y: 9 });
+  }
+
+  stepMazeMuncher(game);
+  assert.deepEqual(position(game.player), { x: 12, y: 1 });
+  assert.deepEqual(position(game.enemies[0]), { x: 12, y: 9 });
+
+  stepMazeMuncher(game);
+  assert.deepEqual(position(game.player), { x: 13, y: 1 });
+  assert.deepEqual(position(game.enemies[0]), { x: 12, y: 9 });
+
+  stepMazeMuncher(game);
+  assert.deepEqual(position(game.player), { x: 13, y: 1 });
+  assert.deepEqual(position(game.enemies[0]), { x: 13, y: 9 });
+});
+
+test("life loss shows a multi-turn recovery pause with meaningful collision grace and delayed enemy movement", () => {
+  const game = createMazeMuncher({
+    enemyStarts: [{ x: 2, y: 1 }],
+    enemyDirections: ["left"],
+    enemyProfiles: ["chaser"],
+    lives: 3,
+    pellets: [{ x: 13, y: 9 }],
+  });
+  setMazeDirection(game, "right");
+  stepMazeMuncher(game);
+
+  assert.equal(game.lives, 2);
+  assert.equal(game.phase, "life-lost");
+  assert.equal(game.lifeLost, true);
+  assert.equal(game.recoveryTicks, 6);
+  assert.equal(game.collisionGraceTicks, 8);
+  const resetPlayer = position(game.player);
+  const resetEnemy = position(game.enemies[0]);
+
+  for (let tick = 0; tick < 5; tick += 1) stepMazeMuncher(game);
+  assert.equal(game.phase, "life-lost");
+  assert.equal(game.lifeLost, true);
+  assert.deepEqual(position(game.player), resetPlayer);
+  assert.deepEqual(position(game.enemies[0]), resetEnemy);
+
+  stepMazeMuncher(game);
+  assert.equal(game.phase, "playing");
+  assert.equal(game.lifeLost, false);
+  assert.equal(game.recoveryTicks, 0);
+  assert.deepEqual(position(game.player), resetPlayer);
+  assert.deepEqual(position(game.enemies[0]), resetEnemy);
+
+  stepMazeMuncher(game);
+  assert.equal(game.lives, 2);
+  assert.equal(game.collisionGraceTicks, 7);
+  assert.deepEqual(position(game.enemies[0]), resetEnemy);
 });
 
 test("a bounded deterministic search repeats the same route and terminal result before game over", () => {
@@ -406,10 +480,10 @@ test("a bounded deterministic search repeats the same route and terminal result 
   assert.deepEqual(second.route, first.route);
   assert.deepEqual(second.result, first.result);
   assert.equal(second.generated, first.generated);
-  assert.equal(first.route.length, 164);
+  assert.equal(first.route.length, 233);
   assert.equal(first.result.score, 720);
-  assert.equal(first.result.lives, 1);
-  assert.equal(mazeRouteHash(first.route), "84fdf521c8766e0c");
+  assert.equal(first.result.lives, 3);
+  assert.equal(mazeRouteHash(first.route), "af2291698573ac83");
 
   const replay = createMazeMuncher();
   startMazeMuncher(replay);

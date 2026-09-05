@@ -25,7 +25,11 @@ const DEFAULT_ENEMY_PROFILES = Object.freeze(["chaser", "patrol"]);
 const DEFAULT_DIRECTION = "left";
 const DEFAULT_LIVES = 3;
 const DEFAULT_TILE_SIZE = 24;
-const COLLISION_GRACE_TICKS = 1;
+const ENEMY_MOVE_INTERVAL_TICKS = 2;
+const INITIAL_ENEMY_DELAY_TICKS = 10;
+const RESPAWN_ENEMY_DELAY_TICKS = 10;
+const LIFE_LOST_PAUSE_TICKS = 6;
+const COLLISION_GRACE_TICKS = 8;
 
 export const MAZE_DIRECTIONS = Object.freeze({
   up: Object.freeze({ x: 0, y: -1 }),
@@ -282,6 +286,16 @@ function moveEnemy(game, enemy) {
   return true;
 }
 
+function moveEnemiesIfReady(game) {
+  if (game.enemyMoveCooldown > 0) {
+    game.enemyMoveCooldown -= 1;
+    return false;
+  }
+  for (const enemy of game.enemies) moveEnemy(game, enemy);
+  game.enemyMoveCooldown = ENEMY_MOVE_INTERVAL_TICKS - 1;
+  return true;
+}
+
 function hasCollision(game, previousPlayer, previousEnemies) {
   for (let index = 0; index < game.enemies.length; index += 1) {
     const enemy = game.enemies[index];
@@ -317,17 +331,22 @@ function resetActors(game) {
   }
 }
 
-function clearLifeLostNotice(game) {
-  if (game.phase !== "life-lost") return;
+function advanceLifeLostRecovery(game) {
+  if (game.phase !== "life-lost") return false;
+  game.recoveryTicks = Math.max(0, game.recoveryTicks - 1);
+  if (game.recoveryTicks > 0) return true;
   game.phase = "playing";
   game.lifeLost = false;
   game.lastEvent = "playing";
+  return true;
 }
 
 function loseLife(game) {
   game.lives = Math.max(0, game.lives - 1);
   resetActors(game);
   game.collisionGraceTicks = game.lives > 0 ? COLLISION_GRACE_TICKS : 0;
+  game.recoveryTicks = game.lives > 0 ? LIFE_LOST_PAUSE_TICKS : 0;
+  game.enemyMoveCooldown = game.lives > 0 ? RESPAWN_ENEMY_DELAY_TICKS : 0;
   game.lastEvent = "life-lost";
   game.lifeLost = true;
   game.boardCleared = false;
@@ -366,6 +385,8 @@ function clearBoard(game) {
   game.boardCleared = true;
   game.lifeLost = false;
   game.collisionGraceTicks = 0;
+  game.recoveryTicks = 0;
+  game.enemyMoveCooldown = 0;
   game.lastEvent = "board-cleared";
   updatePelletStats(game);
 }
@@ -411,6 +432,8 @@ export function createMazeMuncher(options = {}) {
     lifeLost: false,
     lastEvent: "ready",
     collisionGraceTicks: 0,
+    recoveryTicks: 0,
+    enemyMoveCooldown: INITIAL_ENEMY_DELAY_TICKS,
     tick: 0,
   };
 
@@ -516,7 +539,10 @@ export function setMazeDirection(candidate, direction) {
 export function stepMazeMuncher(candidate) {
   const game = requireMazeGame(candidate);
   if (game.gameOver || game.finished || game.status === "ready") return candidate;
-  clearLifeLostNotice(game);
+  if (game.phase === "life-lost") {
+    advanceLifeLostRecovery(game);
+    return candidate;
+  }
   const previousPlayer = position(game.player);
   const previousEnemies = game.enemies.map(position);
   const collisionGraceActive = game.collisionGraceTicks > 0;
@@ -534,8 +560,8 @@ export function stepMazeMuncher(candidate) {
     return candidate;
   }
 
-  for (const enemy of game.enemies) moveEnemy(game, enemy);
-  if (!collisionGraceActive && hasCollision(game, previousPlayer, previousEnemies)) loseLife(game);
+  const enemiesMoved = moveEnemiesIfReady(game);
+  if (enemiesMoved && !collisionGraceActive && hasCollision(game, previousPlayer, previousEnemies)) loseLife(game);
   if (collisionGraceActive) game.collisionGraceTicks -= 1;
   updatePelletStats(game);
   return candidate;
@@ -555,6 +581,8 @@ export function restartMazeMuncher(candidate) {
   game.lifeLost = false;
   game.lastEvent = "restart";
   game.collisionGraceTicks = 0;
+  game.recoveryTicks = 0;
+  game.enemyMoveCooldown = INITIAL_ENEMY_DELAY_TICKS;
   game.tick = 0;
   game.pellets = metadata.initialPellets.map((pellet) => ({ ...pellet }));
   game.totalPellets = metadata.initialPellets.length;

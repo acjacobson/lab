@@ -242,3 +242,29 @@ test("Maze Muncher uses compact complete status copy and a responsive readable H
   assert.match(stylesheet, /data-active-game=["']maze-muncher["'][^}]*[\s\S]*?white-space:\s*normal/s);
   assert.match(stylesheet, /data-active-game=["']maze-muncher["'][^}]*[\s\S]*?text-overflow:\s*clip/s);
 });
+
+test("Maze Muncher lays out a larger square mobile maze from available canvas space", () => {
+  const source = readSource();
+  assert.match(source, /function mazeLayout/);
+  assert.match(source, /availableWidth/);
+  assert.match(source, /availableHeight/);
+  assert.match(source, /Math\.floor\(Math\.min\(availableWidth\s*\/\s*state\.width,\s*availableHeight\s*\/\s*state\.height\)\)/);
+  assert.match(source, /document\.body\.dataset\.activeGame/);
+});
+
+test("mobile Maze Muncher keeps the cabinet shell but gives the game a larger D-pad without the decorative joystick", () => {
+  const stylesheet = fs.readFileSync(stylesheetPath, "utf8");
+  assert.match(stylesheet, /body\[data-active-game=["']maze-muncher["']\]/);
+  assert.match(stylesheet, /body\[data-active-game=["']maze-muncher["']\][\s\S]*?\.joystick-cluster\s*\{[^}]*display:\s*none/s);
+  assert.match(stylesheet, /body\[data-active-game=["']maze-muncher["']\][\s\S]*?grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*58px\)\)/s);
+  assert.match(stylesheet, /body\[data-active-game=["']maze-muncher["']\][\s\S]*?\.screen-inset\[data-active-game=["']maze-muncher["']\][\s\S]*?margin-bottom:\s*0/s);
+});
+
+test("life loss exposes a visible ready recovery state in the maze renderer", () => {
+  const source = readSource();
+  assert.match(source, /Life lost\s*[·•]\s*Get ready/);
+  assert.match(source, /drawMazeMessage\(["']GET READY["']/);
+  assert.match(source, /SAFE/);
+  assert.match(source, /recoveryTicks/);
+  assert.match(source, /collisionGraceTicks/);
+});
