@@ -70,6 +70,16 @@ def sailing(request: Request):
     )
 
 
+@app.get("/games/pacman")
+def pacman_redirect():
+    return RedirectResponse(url="/games/pacman/", status_code=307)
+
+
+@app.get("/games/pacman/", response_class=HTMLResponse)
+def pacman(request: Request):
+    return templates.TemplateResponse(request, "pacman.html", {"app_name": APP_NAME})
+
+
 @app.get("/blog", response_class=HTMLResponse)
 def blog(request: Request):
     return templates.TemplateResponse(request, "blog.html", {"app_name": APP_NAME})
